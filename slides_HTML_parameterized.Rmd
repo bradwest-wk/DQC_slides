@@ -45,6 +45,10 @@ knitr::opts_chunk$set(echo = FALSE)
 ```{r make_slides, echo = FALSE, include = F, eval=TRUE}
 ### TODO:/NOTES:
 
+# The bulk of this code written by Allen Bross and Michael Lerch, 
+# modified by b_west to run as a parameterized r-markdown document
+# and to work in concert with shiny app for generating slidedeck
+
 # - in aggregate(y ~ x) Any NA's in x are ignored, so whenever doing an
 # aggregate, check for NA's and plug in a value of "None" (or something) if
 # necessary, otherwise, we'll miss some data points.  Variables where I've seen
