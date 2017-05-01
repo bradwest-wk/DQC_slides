@@ -1,0 +1,1173 @@
+---
+title: "DQC Rule Results"
+# author: "Brad West"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  ioslides_presentation:
+    widescreen: true
+    smaller: true
+params: 
+  directory: "~/Google_Drive/Projects/DQ_requests/DQC_slides"
+  username: "web_query"
+  password: "W0rkiv@"
+  dbserver: "rltest.markv.com"
+  dbport: 8084
+  dbname: "debug3_db"
+  data_source: "database"
+  file_input: "DQC_2014_onwards.csv"
+  # exclude_rules: c("Rule 0008", "Rule 0011")
+  data_source_counts: "file"
+  counts_file_input: "gaap_v_ext_unique_dp.csv"
+  start_date: "2016-07-01"
+  end_date: "2017-04-01"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r eval = FALSE}
+  params = list(directory = "/Users/bradwest/Google_Drive/Projects/DQ_requests/DQC_slides",
+                                username = "web_query",
+                                password = "W0rkiv@",
+                                dbserver = "rltest.markv.com",
+                                dbport = 8084,
+                                dbname = "debug3_db",
+                                data_source = "database",
+                                file_input = "rulesdata_raw_14_17.csv",
+                                data_source_counts = "file",
+                                counts_file_input = "gaap_v_ext_unique_dp.csv",
+                                start_date = "2015-07-01",
+                                end_date = "2017-04-01")
+```
+
+
+```{r make_slides, echo = FALSE, include = F, eval=TRUE}
+### TODO:/NOTES:
+
+# - in aggregate(y ~ x) Any NA's in x are ignored, so whenever doing an
+# aggregate, check for NA's and plug in a value of "None" (or something) if
+# necessary, otherwise, we'll miss some data points.  Variables where I've seen
+# this happen: taxonomy, filer_status/filer_category
+# - whenever merging, it is probably safest to use all = TRUE and then subset
+# later rather than relying on all.x = TRUE to do the subsetting for you.
+# - some of the plots have legend = FALSE but probably should include a legend
+# - some cik's have multiple filer status per quarter, probably b/c they forgot
+# to change and refiled.  Ignoring since the # affected is small.
+
+
+### FUNCTIONS AND GLOBAL VARIABLES
+
+# Load necessary packages
+library(tidyverse) 
+library(lubridate)
+library(stringr)
+library(stringi)
+
+# Working Directory
+# directory <- params$directory
+# setwd(directory)
+
+Qbreaks <- as_date(c("2009/01/01", "2009/04/01", "2009/07/01", "2009/10/01",
+                     "2010/01/01", "2010/04/01", "2010/07/01", "2010/10/01",
+                     "2011/01/01", "2011/04/01", "2011/07/01", "2011/10/01",
+                     "2012/01/01", "2012/04/01", "2012/07/01", "2012/10/01",
+                     "2013/01/01", "2013/04/01", "2013/07/01", "2013/10/01",
+                     "2014/01/01", "2014/04/01", "2014/07/01", "2014/10/01",
+                     "2015/01/01", "2015/04/01", "2015/07/01", "2015/10/01",
+                     "2016/01/01", "2016/04/01", "2016/07/01", "2016/10/01",
+                     "2017/01/01", "2017/04/01", "2017/07/01", "2017/10/01"))
+
+Qnames <- c("2009Q1", "2009Q2", "2009Q3", "2009Q4",
+            "2010Q1", "2010Q2", "2010Q3", "2010Q4",
+            "2011Q1", "2011Q2", "2011Q3", "2011Q4",
+            "2012Q1", "2012Q2", "2012Q3", "2012Q4",
+            "2013Q1", "2013Q2", "2013Q3", "2013Q4",
+            "2014Q1", "2014Q2", "2014Q3", "2014Q4",
+            "2015Q1", "2015Q2", "2015Q3", "2015Q4",
+            "2016Q1", "2016Q2", "2016Q3", "2016Q4",
+            "2017Q1", "2017Q2", "2017Q3", "2017Q4")
+
+Qnums <- c(1, 2, 3, 4,
+           5, 6, 7, 8,
+           9, 10, 11, 12,
+           13, 14, 15, 16,
+           17, 18, 19, 20,
+           21, 22, 23, 24,
+           25, 26, 27, 28,
+           29, 30, 31, 32,
+           33, 34, 35, 36)
+
+
+# take rule violations and breakdown by quarter
+ruleByQuarter <- function(datain, laf = FALSE, src = FALSE)
+{
+  # subset to large or small filers if requested
+  if (laf)
+  {
+    datain <- subset(datain, stri_detect_regex(filer_status, "large", case_insensitive = T))
+  }
+  if (src)
+  {
+    datain <- subset(datain, stri_detect_regex(filer_status, "small", case_insensitive = T))
+  }
+  
+  # remove UTC suffix if present on date
+  datain$date <- as_date(str_replace(datain$filing_date, '^(.*) UTC', '\\1'))
+  # bin dates into approprate quarter names
+  datain$quarter <- Qnames[cut(datain$date, Qbreaks, right = FALSE)]
+  # get number of violations in each quarter
+  datain$cik[is.na(datain$cik)] <- 0
+  # in case there are no facts for that filer status, use if statement
+  if (nrow(datain) > 0){
+    aggregate(cik ~ quarter, datain, length)
+  } else {
+    data.frame(quarter = character(), cik = integer(), stringsAsFactors = F)
+  }
+}
+
+
+# take fact and filing data and get number of facts per quarter
+factsByQuarter <- function(datain, laf = FALSE, src = FALSE)
+{
+  # subset to larger or small filers if requested
+  if (laf)
+  {
+    datain <- subset(datain, stri_detect_regex(filer_status, "large", case_insensitive = T))
+  }
+  if (src)
+  {
+    datain <- subset(datain, stri_detect_regex(filer_status, "small", case_insensitive = T))
+  }
+  
+  # remove UTC suffix from date
+  datain$date <- as.Date(sub('^(.*) UTC', '\\1', datain$filing_date))
+  # bin dates to quarter names
+  datain$quarter <- Qnames[cut(datain$date, Qbreaks, right = FALSE)]
+  # sum the total number of facts per quarter
+  aggregate(fact_count ~ quarter, datain, sum) # Changed count to fact_count to match Errors.sql file
+}
+
+### GET RULES VIOLATIONS DATA DEPENDING ON WHETHER PARAMS INDICATE QUERY OR NOT
+
+if (params$data_source=="file"){
+  rulesdata <- read_csv(paste0(params$directory, "/", params$file_input))
+} else {
+  library(RPostgreSQL)
+  db_user <- params$username
+  db_password <- params$password
+  db_server <- params$dbserver
+  db_port <- params$dbport
+  db_name <- params$dbname
+  con <- dbConnect(PostgreSQL(), host=db_server, port=db_port,
+                   user=db_user, password=db_password, dbname=db_name)
+  query <- paste("
+CREATE TEMPORARY TABLE 
+_tmp_period_of_interest AS (
+SELECT e.name AS company_name,
+e.reference_number AS cik, 
+e.standard_industry_code AS sic,
+f.form_type, 
+f.filing_date,
+CASE
+WHEN d.document_url::text = 'http://xbrl.us/us-gaap/1.0/elts/us-gaap-2008-03-31.xsd'::text THEN '2008'::text
+WHEN d.document_url::text = 'http://taxonomies.xbrl.us/us-gaap/2009/elts/us-gaap-2009-01-31.xsd'::text THEN '2009'::text
+WHEN d.document_url::text = 'http://xbrl.fasb.org/us-gaap/2011/elts/us-gaap-2011-01-31.xsd'::text THEN '2011'::text
+WHEN d.document_url::text = 'http://xbrl.fasb.org/us-gaap/2012/elts/us-gaap-2012-01-31.xsd'::text THEN '2012'::text
+WHEN d.document_url::text = 'http://xbrl.fasb.org/us-gaap/2013/elts/us-gaap-2013-01-31.xsd'::text THEN '2013'::text
+WHEN d.document_url::text = 'http://xbrl.fasb.org/us-gaap/2014/elts/us-gaap-2014-01-31.xsd'::text THEN '2014'::text
+WHEN d.document_url::text = 'http://xbrl.fasb.org/us-gaap/2015/elts/us-gaap-2015-01-31.xsd'::text THEN '2015'::text
+WHEN d.document_url::text = 'http://xbrl.fasb.org/us-gaap/2016/elts/us-gaap-2016-01-31.xsd'::text THEN '2016'::text
+WHEN d.document_url::text = 'http://xbrl.fasb.org/us-gaap/2017/elts/us-gaap-2017-01-31.xsd'::text THEN '2017'::text
+ELSE d.document_url::text
+END AS taxonomy,
+f.entry_url,
+CASE
+WHEN f.creation_software LIKE '%XBRL Document Created with Wdesk from Workiva%'::TEXT THEN 'Workiva'::TEXT
+WHEN f.creation_software LIKE '%XBRL document created by Certent Disclosure Management%' THEN 'Certent'::TEXT
+WHEN f.creation_software LIKE '%Generated by ThunderDome XBRL%' THEN 'ThunderDome'::TEXT
+WHEN f.creation_software LIKE '%Generated by EDGARfilings PROfile%Summit Financial Printing%' THEN 'EDGARfilings PROfile_Summit Financial Printing'::TEXT
+WHEN f.creation_software LIKE '%Created by S2 Filings%LLC%' THEN 'Created by S2 Filings LLC'::TEXT
+WHEN f.creation_software LIKE '%Created by Zenhancer- http://www.zenhancer.com%' THEN 'Created by Zenhancer'::TEXT
+WHEN f.creation_software LIKE '%Vistalytics - iFile Suite%' THEN 'Vistalytics - iFile Suite' ::TEXT
+WHEN f.creation_software LIKE '%Produced by NeoClaurs  iFile%' THEN 'Produced by NeoClaurs iFile'::TEXT
+ELSE f.creation_software
+END AS creation_software,
+f.filing_number AS accession_number,
+f.authority_html_url AS sec_url,
+e.filer_category AS filer_status,
+r.report_id
+FROM 
+filing f
+JOIN entity e ON e.entity_id=f.entity_id
+JOIN report r ON r.filing_id=f.filing_id
+JOIN document d ON r.standard_schema_doc_id = d.document_id
+WHERE f.filing_date>=", paste0("\'", params$start_date, "\'"), "AND f.filing_date < ", paste0("\'", params$end_date, "\'"), ");
+
+-- Messages Table
+-- CREATE MATERIALIZED VIEW
+CREATE TEMPORARY TABLE 
+_tmp_messages AS (
+SELECT m.message_id, m.message_code, regexp_replace(m.value, E'[\\n\\r]+', ' ', 'g' ) AS message_value, m.report_id, mr.object_id
+FROM message m
+JOIN _tmp_period_of_interest rb ON rb.report_id=m.report_id
+LEFT JOIN message_reference mr ON m.message_id=mr.message_id
+WHERE message_code LIKE 'DQC.US.00%'); 
+
+-- Datapoints Table
+CREATE TEMPORARY TABLE _tmp_datapoints AS (
+SELECT a.name, a.qname, a.base_type,
+CASE 
+WHEN a.base_type='String' THEN 'String'
+WHEN a.base_type='TextBlock' THEN 'TextBlock'
+ELSE regexp_replace(dp.value, E'[\\n\\r]+', ' ', 'g' )
+END AS fact_value, 
+dp.aspect_id, 
+dp.period_id, 
+dp.aspect_value_selection_id, 
+dp.report_id, 
+dp.datapoint_id, 
+m.message_id, 
+m.message_code, 
+m.message_value, 
+p.start_date, 
+p.end_date
+FROM data_point dp
+JOIN _tmp_messages m ON m.object_id=dp.datapoint_id
+LEFT JOIN aspect a ON a.aspect_id=dp.aspect_id
+LEFT JOIN period p ON p.period_id=dp.period_id);
+
+-- Results Table
+CREATE TEMPORARY TABLE _tmp_results AS 
+(
+  SELECT DISTINCT ON (dp.message_id)
+  rb.company_name, 
+  rb.cik, 
+  rb.sic,
+  rb.form_type, 
+  rb.filing_date, 
+  rb.taxonomy,
+  rb.creation_software,
+  rb.accession_number,
+  rb.sec_url,
+  rb.entry_url,
+  dc.count AS fact_count,
+  rb.filer_status,
+  dp.message_code AS exact_rule,
+  substring(dp.message_code, 1, 11) AS general_rule,
+  dp.name AS element_name, 
+  CASE
+  WHEN dp.base_type='String' THEN 'String'
+  WHEN dp.base_type='TextBlock' THEN 'TextBlock'
+  ELSE regexp_replace(dp.fact_value, E'[\\n\\r]+', ' ', 'g' )
+  END AS fact_value,
+  dp.start_date,
+  dp.end_date,
+  da.dimension_names,
+  dp.message_value,
+  CASE
+  WHEN dp.qname::text ~~ '{http://xbrl.sec.gov%'::text THEN 'GAAP'::text
+  WHEN dp.qname::text ~~ '{http://fasb.org/%'::text THEN 'GAAP'::text
+  WHEN dp.qname::text ~~ '{http://xbrl.us/%'::text THEN 'GAAP'::text
+  ELSE 'EXTENSION'::text
+  END AS element_source,
+  da.dimension_source,
+  dp.message_id,
+  NULL AS element_name_2,
+  NULL AS fact_value_2,
+  NULL AS start_date_2,
+  NULL AS end_date_2,
+  NULL AS dimension_names_2,
+  NULL AS message_value_2,
+  NULL AS element_source_2,
+  NULL AS dimension_source_2
+  FROM _tmp_period_of_interest rb
+  JOIN _tmp_datapoints dp ON rb.report_id=dp.report_id
+  LEFT OUTER JOIN _mv_datapoint_counts dc ON dc.report_id=rb.report_id
+  LEFT OUTER JOIN  _mv_dimensions_all da ON da.aspect_value_selection_id=dp.aspect_value_selection_id
+  --JOIN _tmp_period p ON p.period_id=dp.period_id 
+  WHERE dp.message_code NOT LIKE 'DQC.US.0005%'
+  AND dp.message_code NOT LIKE 'DQC.US.0006%'
+  AND dp.message_code NOT LIKE 'DQC.US.0018%' -- Added rule 18
+  AND dp.message_code NOT LIKE 'DQC.US.0033%'
+  AND dp.message_code NOT LIKE 'DQC.US.0008.1%' -- Added rule 8.1
+  AND dp.message_code NOT LIKE 'DQC.US.0011.1%' -- Added rule 11.1
+  
+  UNION
+  -- Multiple References Table
+  SELECT DISTINCT ON (dp.message_id)
+  rb.company_name, 
+  rb.cik, 
+  rb.sic,
+  rb.form_type, 
+  rb.filing_date, 
+  rb.taxonomy,
+  rb.creation_software,
+  rb.accession_number,
+  rb.sec_url,
+  rb.entry_url,
+  dc.count AS fact_count,
+  rb.filer_status,
+  --rb.period_end,
+  dp.message_code AS exact_rule,
+  substring(dp.message_code, 1, 11) AS general_rule,
+  dp.name AS element_name,
+  CASE
+  WHEN dp.base_type='String' THEN 'String'
+  WHEN dp.base_type='TextBlock' THEN 'TextBlock'
+  ELSE regexp_replace(dp.fact_value, E'[\\n\\r]+', ' ', 'g' )
+  END AS fact_value,
+  dp.start_date,
+  dp.end_date,
+  da.dimension_names,
+  dp.message_value,
+  CASE
+  WHEN dp.qname::text ~~ '{http://xbrl.sec.gov%'::text THEN 'GAAP'::text
+  WHEN dp.qname::text ~~ '{http://fasb.org/%'::text THEN 'GAAP'::text
+  WHEN dp.qname::text ~~ '{http://xbrl.us/%'::text THEN 'GAAP'::text
+  ELSE 'EXTENSION'::text
+  END AS element_source,
+  da.dimension_source,
+  dp.message_id,
+  dp2.name AS element_name_2,
+  CASE
+  WHEN dp2.base_type='String' THEN 'String'
+  WHEN dp2.base_type='TextBlock' THEN 'TextBlock'
+  ELSE regexp_replace(dp2.fact_value, E'[\\n\\r]+', ' ', 'g' )
+  END AS fact_value_2,
+  dp2.start_date AS start_date_2,
+  dp2.end_date AS end_date_2,
+  da2.dimension_names AS dimension_names_2,
+  dp2.message_value AS message_value_2,
+  CASE
+  WHEN dp2.qname::text ~~ '{http://xbrl.sec.gov%'::text THEN 'GAAP'::text
+  WHEN dp2.qname::text ~~ '{http://fasb.org/%'::text THEN 'GAAP'::text
+  WHEN dp2.qname::text ~~ '{http://xbrl.us/%'::text THEN 'GAAP'::text
+  ELSE 'EXTENSION'::text
+  END AS element_source_2,
+  da2.dimension_source AS dimension_source_2
+  FROM _tmp_period_of_interest rb
+  JOIN _tmp_datapoints dp ON rb.report_id=dp.report_id
+  LEFT OUTER JOIN _tmp_datapoints dp2 ON dp2.message_id = dp.message_id AND dp2.datapoint_id<>dp.datapoint_id
+  LEFT OUTER JOIN _mv_datapoint_counts dc ON dc.report_id=rb.report_id
+  LEFT OUTER JOIN  _mv_dimensions_all da ON da.aspect_value_selection_id=dp.aspect_value_selection_id
+  LEFT OUTER JOIN _mv_dimensions_all da2 ON da2.aspect_value_selection_id=dp2.aspect_value_selection_id
+  WHERE
+  (dp.message_code LIKE 'DQC.US.0008.1%'
+  OR dp.message_code LIKE 'DQC.US.0011.1%'
+  OR dp.message_code LIKE 'DQC.US.0005%'
+  OR dp.message_code LIKE 'DQC.US.0006%'
+  OR dp.message_code LIKE 'DQC.US.0033%')
+  
+  UNION
+  -- Rule 18 -- Extracts element name from message, null for fact info
+  SELECT DISTINCT ON (m.message_id)
+  rb.company_name, 
+  rb.cik, 
+  rb.sic,
+  rb.form_type, 
+  rb.filing_date, 
+  rb.taxonomy,
+  rb.creation_software,
+  rb.accession_number,
+  rb.sec_url,
+  rb.entry_url,
+  dc.count AS fact_count,
+  rb.filer_status,
+  --rb.period_end,
+  m.message_code AS exact_rule,
+  substring(m.message_code, 1, 11) AS general_rule,
+  regexp_replace(m.message_value, E'\\s.*', '') AS element_name, -- Drops everything after the space
+  NULL AS fact_value,
+  NULL AS start_date,
+  NULL AS end_date,
+  NULL AS dimension_names,
+  m.message_value AS message_value,
+  NULL AS element_source,
+  NULL AS dimension_source,
+  m.message_id,
+  NULL AS element_name_2,
+  NULL AS fact_value_2,
+  NULL AS start_date_2,
+  NULL AS end_date_2,
+  NULL AS dimension_names_2,
+  NULL AS message_value_2,
+  NULL AS element_source_2,
+  NULL AS dimension_source_2
+  FROM _tmp_period_of_interest rb
+  JOIN _tmp_messages m ON rb.report_id=m.report_id
+  LEFT OUTER JOIN _mv_datapoint_counts dc ON dc.report_id=rb.report_id
+  WHERE m.message_code LIKE 'DQC.US.0018%'
+  
+  UNION
+  -- Null Object ID
+  SELECT DISTINCT ON (m.message_id)
+  rb.company_name, 
+  rb.cik, 
+  rb.sic,
+  rb.form_type, 
+  rb.filing_date, 
+  rb.taxonomy,
+  rb.creation_software,
+  rb.accession_number,
+  rb.sec_url,
+  rb.entry_url,
+  dc.count AS fact_count,
+  rb.filer_status,
+  --rb.period_end,
+  m.message_code AS exact_rule,
+  substring(m.message_code, 1, 11) AS general_rule,
+  NULL AS element_name, 
+  NULL AS fact_value,
+  NULL AS start_date,
+  NULL AS end_date,
+  NULL AS dimension_names,
+  m.message_value AS message_value,
+  NULL AS element_source,
+  NULL AS dimension_source,
+  m.message_id,
+  NULL AS element_name_2,
+  NULL AS fact_value_2,
+  NULL AS start_date_2,
+  NULL AS end_date_2,
+  NULL AS dimension_names_2,
+  NULL AS message_value_2,
+  NULL AS element_source_2,
+  NULL AS dimension_source_2
+  FROM _tmp_period_of_interest rb
+  JOIN _tmp_messages m ON rb.report_id=m.report_id
+  LEFT OUTER JOIN _mv_datapoint_counts dc ON dc.report_id=rb.report_id
+  WHERE m.object_id IS NULL AND message_code LIKE 'DQC.US.%'
+  
+  UNION
+  -- Null report ID
+  SELECT DISTINCT ON (rb.report_id)
+  rb.company_name, 
+  rb.cik, 
+  rb.sic,
+  rb.form_type, 
+  rb.filing_date, 
+  rb.taxonomy,
+  rb.creation_software,
+  rb.accession_number,
+  rb.sec_url,
+  rb.entry_url,
+  dc.count AS fact_count,
+  rb.filer_status,
+  --rb.period_end,
+  NULL AS exact_rule,
+  NULL AS general_rule,
+  NULL AS element_name, 
+  NULL AS fact_value,
+  NULL AS start_date,
+  NULL AS end_date,
+  NULL AS dimension_names,
+  NULL AS message_value,
+  NULL AS element_source,
+  NULL AS dimension_source,
+  NULL AS message_id,
+  NULL AS element_name_2,
+  NULL AS fact_value_2,
+  NULL AS start_date_2,
+  NULL AS end_date_2,
+  NULL AS dimension_names_2,
+  NULL AS message_value_2,
+  NULL AS element_source_2,
+  NULL AS dimension_source_2
+  FROM _tmp_period_of_interest rb
+  FULL OUTER JOIN _tmp_datapoints dp ON rb.report_id=dp.report_id
+  LEFT OUTER JOIN _mv_datapoint_counts dc ON dc.report_id=rb.report_id
+  WHERE dp.report_id IS NULL
+)
+;
+
+SELECT * FROM _tmp_results;
+")
+  
+  rulesdata <- dbGetQuery(con, query)
+  # Disconnect from the database
+  dbDisconnect(con)
+}
+
+rulesdata <- subset(rulesdata, !(form_type %in% c("497", "485APOS", "485BPOS")))
+
+
+# could possibly be duplicates
+# Unlikely (impossible ?) with new query
+combos <- rulesdata[ , -which(colnames(rulesdata) %in% c("dimension_names", "dimension_names_2"))]
+rulesdata <- rulesdata[!duplicated(combos), ]
+rule0001 <- subset(rulesdata, general_rule == 'DQC.US.0001')
+rule0004 <- subset(rulesdata, general_rule == 'DQC.US.0004')
+rule0005 <- subset(rulesdata, general_rule == 'DQC.US.0005')
+rule0006 <- subset(rulesdata, general_rule == 'DQC.US.0006')
+rule0008 <- subset(rulesdata, general_rule == 'DQC.US.0008')
+rule0009 <- subset(rulesdata, general_rule == 'DQC.US.0009')
+rule0011 <- subset(rulesdata, general_rule == 'DQC.US.0011')
+rule0013 <- subset(rulesdata, general_rule == 'DQC.US.0013')
+rule0014 <- subset(rulesdata, general_rule == 'DQC.US.0014')
+rule0015 <- subset(rulesdata, general_rule == 'DQC.US.0015')
+rule0018 <- subset(rulesdata, general_rule == 'DQC.US.0018')
+rule0033 <- subset(rulesdata, general_rule == 'DQC.US.0033')
+rule0036 <- subset(rulesdata, general_rule == 'DQC.US.0036')
+rule0041 <- subset(rulesdata, general_rule == 'DQC.US.0041')
+ruleelse <- subset(rulesdata, !(general_rule %in% paste0('DQC.US.00', c('01', '04', '05', '06', '08', '09', '11',
+                                                                        '13', '14', '15', '18', '33', '36', '41')))) # NA for general_rule
+
+### GET DATAPOINT COUNTS AND CREATION SOFTWARE DATA (sql)
+
+# # total number of facts and filings comes from query
+# # each row is a filing event
+# # count column is number of facts for that filing event
+# # so we can get number of filings by counting rows
+# # and we can get number of facts by summing the count column
+
+# Get filing information
+# From rulesdata
+filingsdata <- rulesdata[ , c("creation_software", "accession_number", "filing_date", "filer_status", "fact_count")]
+# need to remove duplicates to get correct fact count
+filingsdata <- filingsdata[-which(duplicated(filingsdata)), ]
+
+# get formtype information
+formtypedata <- rulesdata[ , c("form_type", "accession_number", "filing_date")]
+# need to remove duplicated to get correct fact count
+formtypedata <- formtypedata[-which(duplicated(formtypedata)), ]
+
+
+# count number of cik's per quarter with filer status
+# from rulesdata
+# If is.na(filer_status) = T, then filer_category includes an NA.  So set all NAs to "Null"
+rulesdata$filer_status[is.na(rulesdata$filer_status)] <- 'Null'
+cikstatus <- rulesdata %>%
+  mutate(quarter = quarter(filing_date, with_year = T),
+         filer_category = ifelse(stri_detect_regex(filer_status, "small", case_insensitive = T), 'Smaller Reporting Company',
+                                 ifelse(stri_detect_regex(filer_status, "large", case_insensitive = T), 'Large Accelerated Filer', 'Other'))) %>%
+  group_by(quarter, filer_category) %>% summarise(filings = n_distinct(cik))
+
+
+
+# count number of cik per quarter ignoring filer category
+# from rulesdata
+cikall <- rulesdata %>%
+  mutate(quarter = quarter(filing_date, with_year = T)) %>% 
+  group_by(quarter) %>% summarise(filings = n_distinct(cik))
+
+# there are a few cik that have multiple filings with different category/status,
+# compare:
+# aggregate(filings ~ quarter, cikstatus, sum)
+# cikall
+
+### AGGREGATE AND MERGE DATA SOURCES
+
+# Each row is a quarter.
+# Columns are rules containing number of firings of that rule for each quarter
+# Also a column for total count of facts
+# merge all rules and total facts onto rule 0004
+# all_merge <- merge(merge(merge(merge(merge(merge(merge(merge(merge(merge(merge(merge(merge(merge(ruleByQuarter(rule0001),
+#                                                        ruleByQuarter(rule0004), by = "quarter", all = TRUE),
+#                                                  ruleByQuarter(rule0005), by = "quarter", all = TRUE),
+#                                            ruleByQuarter(rule0006), by = "quarter", all = TRUE),
+#                                      ruleByQuarter(rule0008), by = "quarter", all = TRUE),
+#                                      ruleByQuarter(rule0009), by = "quarter", all = TRUE),
+#                          ruleByQuarter(rule0011), by = "quarter", all = TRUE),
+#                    ruleByQuarter(rule0013), by = "quarter", all = TRUE),
+# ruleByQuarter(rule0014), by = "quarter", all = TRUE),
+#                                ruleByQuarter(rule0015), by = "quarter", all = TRUE),
+# ruleByQuarter(rule0018), by = "quarter", all = TRUE),
+#                          ruleByQuarter(rule0033), by = "quarter", all = TRUE),
+#                    ruleByQuarter(rule0036), by = "quarter", all = TRUE),
+# ruleByQuarter(rule0041), by = "quarter", all = TRUE),
+#              factsByQuarter(filingsdata), by = "quarter", all = TRUE)
+# colnames(all_merge) <- c("quarter","Rule 0001", "Rule 0004", "Rule 0005", "Rule 0006", "Rule 0008",
+#                          "Rule 0009", "Rule 0011", "Rule 0013", "Rule 0014", "Rule 0015", "Rule 0018",
+#                          "Rule 0033", "Rule 0036", "Rule 0041", "count")
+# all_merge <- all_merge[grepl("2014|2015|2016|2017", all$quarter), ]
+
+period_quarters <- Qnames[cut(seq.Date(as.Date(params$start_date), as.Date(params$end_date) - days(1), by = "quarter"), Qbreaks, right = FALSE)]
+# start <- params$start_year
+period <- period_quarters[1]
+for(i in 2:(length(period_quarters))){
+  period <- paste0(period, "|", period_quarters[i])
+}
+
+# Removed rule 8 and 11
+all <- full_join(full_join(full_join(full_join(full_join(full_join(full_join(full_join(full_join(full_join(full_join(full_join(ruleByQuarter(rule0001),
+                                                                                                                                                   ruleByQuarter(rule0004), by = "quarter"),
+                                                                                                                                         ruleByQuarter(rule0005), by = "quarter"),
+                                                                                                                               ruleByQuarter(rule0006), by = "quarter"),
+                                                                                                           ruleByQuarter(rule0009), by = "quarter"),
+                                                                                       ruleByQuarter(rule0013), by = "quarter"),
+                                                                             ruleByQuarter(rule0014), by = "quarter"),
+                                                                   ruleByQuarter(rule0015), by = "quarter"),
+                                                         ruleByQuarter(rule0018), by = "quarter"),
+                                               ruleByQuarter(rule0033), by = "quarter"),
+                                     ruleByQuarter(rule0036), by = "quarter"),
+                           ruleByQuarter(rule0041), by = "quarter"),
+                 factsByQuarter(filingsdata), by = "quarter")
+colnames(all) <- c("quarter","Rule 0001", "Rule 0004", "Rule 0005", "Rule 0006",
+                   "Rule 0009", "Rule 0013", "Rule 0014", "Rule 0015", "Rule 0018",
+                   "Rule 0033", "Rule 0036", "Rule 0041", "count")
+all <- all[stri_detect_regex(all$quarter, period), ]
+all <- all[order(all$quarter),]
+
+
+# Above, subset to laf filers only
+laf <- full_join(full_join(full_join(full_join(full_join(full_join(full_join(full_join(full_join(full_join(full_join(full_join(ruleByQuarter(rule0001, laf = T),
+                                                                                                                                                   ruleByQuarter(rule0004, laf = T), by = "quarter"),
+                                                                                                                                         ruleByQuarter(rule0005, laf = T), by = "quarter"),
+                                                                                                                               ruleByQuarter(rule0006, laf = T), by = "quarter"),
+                                                                                                           ruleByQuarter(rule0009, laf = T), by = "quarter"),
+                                                                                       ruleByQuarter(rule0013, laf = T), by = "quarter"),
+                                                                             ruleByQuarter(rule0014, laf = T), by = "quarter"),
+                                                                   ruleByQuarter(rule0015, laf = T), by = "quarter"),
+                                                         ruleByQuarter(rule0018, laf = T), by = "quarter"),
+                                               ruleByQuarter(rule0033, laf = T), by = "quarter"),
+                                     ruleByQuarter(rule0036, laf = T), by = "quarter"),
+                           ruleByQuarter(rule0041, laf = T), by = "quarter"),
+                 factsByQuarter(filingsdata, laf = T), by = "quarter")
+colnames(laf) <- c("quarter","Rule 0001", "Rule 0004", "Rule 0005", "Rule 0006",
+                   "Rule 0009", "Rule 0013", "Rule 0014", "Rule 0015", "Rule 0018",
+                   "Rule 0033", "Rule 0036", "Rule 0041", "count")
+laf[which(is.na(laf), arr.ind = TRUE)] <- 0
+laf <- laf[stri_detect_regex(laf$quarter, period), ]
+laf <- laf[order(laf$quarter),]
+
+# Above, subset to src filers only
+src <- full_join(full_join(full_join(full_join(full_join(full_join(full_join(full_join(full_join(full_join(full_join(full_join(ruleByQuarter(rule0001, src = T),
+                                                                                                                                                   ruleByQuarter(rule0004, src = T), by = "quarter"),
+                                                                                                                                         ruleByQuarter(rule0005, src = T), by = "quarter"),
+                                                                                                                               ruleByQuarter(rule0006, src = T), by = "quarter"),
+                                                                                                           ruleByQuarter(rule0009, src = T), by = "quarter"),
+                                                                                       ruleByQuarter(rule0013, src = T), by = "quarter"),
+                                                                             ruleByQuarter(rule0014, src = T), by = "quarter"),
+                                                                   ruleByQuarter(rule0015, src = T), by = "quarter"),
+                                                         ruleByQuarter(rule0018, src = T), by = "quarter"),
+                                               ruleByQuarter(rule0033, src = T), by = "quarter"),
+                                     ruleByQuarter(rule0036, src = T), by = "quarter"),
+                           ruleByQuarter(rule0041, src = T), by = "quarter"),
+                 factsByQuarter(filingsdata, src = T), by = "quarter")
+colnames(src) <- c("quarter","Rule 0001", "Rule 0004", "Rule 0005", "Rule 0006",
+                   "Rule 0009", "Rule 0013", "Rule 0014", "Rule 0015", "Rule 0018",
+                   "Rule 0033", "Rule 0036", "Rule 0041", "count")
+src[which(is.na(src), arr.ind = TRUE)] <- 0
+src <- src[stri_detect_regex(src$quarter, period), ]
+src <- src[order(src$quarter),]
+
+### GET GAAP VS. EXTENSION COUNTS FOR PERIOD
+if (params$data_source_counts=="file"){
+  ext_count_data <- read_csv(paste0(params$directory, "/", params$counts_file_input))
+} else {
+  library(RPostgreSQL)
+  db_user <- params$username
+  db_password <- params$password
+  db_server <- params$dbserver
+  db_port <- params$dbport
+  db_name <- params$dbname
+  con <- dbConnect(PostgreSQL(), host=db_server, port=db_port,
+                 user=db_user, password=db_password, dbname=db_name)
+  query <- paste("
+  --Creating a subset of 2016 filings.
+  CREATE TEMPORARY TABLE _tmp_period_of_interest AS 
+  SELECT * FROM _mv_research_base_2014_ongoing 
+  WHERE (filing_date >= ", paste0("\'", params$start_date, "\'"), "AND filing_date < ", paste0("\'", params$end_date, "\'"),") AND form_type <> '485BPOS' AND  form_type <>  '485APOS' AND form_type <> '497';
+
+  --Creating a table of datapoints and their sources.
+  CREATE TEMPORARY TABLE _tmp_datapoint AS 
+  SELECT a.name, a.qname, a.aspect_id, dp.report_id, dp.datapoint_id, rb.cik,
+  CASE 
+  WHEN (rb.filing_date >= '2014-01-01' AND rb.filing_date < '2015-01-01') THEN 2014
+  WHEN (rb.filing_date >= '2015-01-01' AND rb.filing_date < '2016-01-01') THEN 2015 
+  WHEN (rb.filing_date >= '2016-01-01' AND rb.filing_date < '2017-01-01') THEN 2016 
+  WHEN (rb.filing_date >= '2017-01-01' AND rb.filing_date < '2018-01-01') THEN 2017
+  WHEN (rb.filing_date >= '2018-01-01' AND rb.filing_date < '2019-01-01') THEN 2018
+  ELSE date_part('year', rb.filing_date)
+  END
+  AS filing_year,   
+  CASE
+  WHEN a.qname LIKE '{http://xbrl.sec.gov%' THEN 'gaap'
+  WHEN a.qname LIKE '{http://fasb.org/%' THEN 'gaap'
+  WHEN a.qname LIKE '{http://xbrl.us/%' THEN 'gaap'
+  WHEN a.qname LIKE '{http://arelle.org/%' THEN 'arelle'
+  ELSE 'extension'
+  END
+  AS source
+  FROM
+  data_point dp
+  JOIN aspect a ON a.aspect_id = dp.aspect_id 
+  JOIN _tmp_period_of_interest rb ON rb.report_id = dp.report_id;
+
+  --Creating a table of non-arelle datapoint counts.
+  CREATE TEMPORARY TABLE _tmp_datapoint_count
+  AS SELECT sq.cik, sq.filing_year, count(distinct sq.report_id) AS filings_per_cik, sum(sq.count) AS fact_count
+  FROM
+	  (SELECT dp.cik, dp.filing_year, dp.report_id, count(dp.datapoint_id) AS count
+	  FROM _tmp_datapoint dp
+	  WHERE dp.source <>'arelle'
+	  GROUP BY dp.filing_year, dp.cik, dp.report_id
+	  ORDER BY dp.cik, dp.filing_year, dp.report_id) AS sq
+  GROUP BY sq.cik, sq.filing_year;
+
+  SELECT dp.source, dp.filing_year, count(distinct(dp.aspect_id)) AS unique_elements, count(distinct(dp.datapoint_id)) AS fact_count 
+  FROM _tmp_datapoint dp
+  GROUP BY dp.filing_year, dp.source
+  ORDER BY dp.source, filing_year DESC;
+")
+
+ext_count_data <- dbGetQuery(con, query)
+# Disconnect from the database
+dbDisconnect(con)
+}
+
+count_data <- ext_count_data[-which(ext_count_data$source=="arelle"),]
+count_data <- count_data %>% arrange(source, desc(filing_year))
+count_data_side <- cbind(count_data$filing_year[which(count_data$source=='extension')], count_data$unique_elements[which(count_data$source=='extension')], 
+                                         count_data$fact_count[which(count_data$source=='extension')],
+                                         count_data$unique_elements[which(count_data$source=='gaap')], 
+                                         count_data$fact_count[which(count_data$source=='gaap')])
+count_data_side <- count_data_side[which(count_data_side[,1] %in% seq(year(params$start_date), year(params$end_date), 1)),]
+colnames(count_data_side) <- c("year", "unique_ext_elements", "ext_fact_count", "unique_gaap_elements", "gaap_fact_count")
+
+### PLOT FUNCTIONS
+
+# Function to make *beautiful* bar plot
+makeBarplot <- function(data, color, ymax = 30000, legend = TRUE)
+{
+  # background color of the plot
+  bgcol = "#d9d9d9"
+  # set xrange of data
+  xmin <- 1
+  xmax <- nrow(data)
+  # half width of bar
+  dx <- 0.15
+  # don't be too fancy with y axis tics
+  par(yaxs = 'i', mar = par()$mar + c(0,0,0,6))
+  # set up the plot
+  plot(0, 0, type = 'n',
+       xlim = c(xmin - dx * 2, xmax + dx * 2), ylim = c(0, ymax),
+       xaxt = 'n', las = 1,
+       xlab = '', ylab = '')
+  # draw the background
+  abline(v = seq(xmin - dx * 2, xmax + dx * 2, length.out = 100), col = bgcol, lwd = 80)
+  # draw light vertical lines
+  abline(v = xmin:xmax, col = "white", lwd = 0.8, lty = 3)
+  # draw light horizontal lines
+  abline(h = axTicks(2), col = "white", lwd = 0.8, lty = 3)
+  # draw a line at 0
+  abline(h = 0)
+  # each row of the dataset is a new quarter
+  for (i in 1:nrow(data))
+  {
+    # y is bottom of current stack of bar chart
+    y <- 0
+    # each column of the dataset is a new stack of the bar chart at the
+    # particular x value (quarter) (first column is quarter name)
+    for (r in 2:ncol(data))
+    {
+      # draw rectangle
+      rect(i - dx, y, i + dx, y + data[i, r], col = color[r - 1])
+      # increment the bottom to be the top of stack we just drew
+      y <- y + data[i, r]
+    }
+  }
+  # make x axis with quarternames
+  axis(1, at = xmin:xmax, data$quarter)
+  # draw legend
+  if (legend)
+  {
+    opar <- par(fig=c(0, 1, 0, 1), oma=c(0, 0, 0, 0), 
+                mar=c(0, 0, 4, .5), new=TRUE)
+    on.exit(par(opar))
+    plot(0, 0, type='n', bty='n', xaxt='n', yaxt='n')
+    legend('topright', legend = colnames(data)[2:ncol(data)], lwd = 4,
+           col = color, bg = bgcol, border = bgcol, box.col = bgcol)
+  }
+}
+
+### PLOT COLORS
+
+# define the color palette
+library(RColorBrewer)
+# colors to use when stacked
+plotcols <- brewer.pal(8, "Set2")
+# color to use with single bar
+singlecol <- "#aaaaaa"
+# This order gives (approximately) most to fewest number of violations
+# when stacking, most aesthetic is to have the largest stack at the bottom
+# however, this puts the rule numbers out of numeric order
+# These are the column numbers for rules 01, 15, 06, 41, 05, 11, 13, 08, 14, 18, 33, 04, 09, 36
+# ruleorder <- c(2, 11, 5, 15, 4, 8, 9, 6, 10, 12, 13, 3, 7, 14)
+# ruleorder without rules 8 and 11
+ruleorder <- c(2, 9, 5, 13, 4, 7, 8, 10, 11, 3, 6, 12)
+
+### MAKE PLOTS
+
+# Making a simple bar chart amounts to passing data that has two columns:
+# quarter (first column) and y-values (second column)
+# In this case, we probably don't need a legend
+#
+# For example,
+#
+# quarter, count
+# 2015Q3, 100
+# 2016Q1, 150
+#
+# Will result in two bars, one of height 100 and one of height 150
+#
+# To make a stacked bar chart, pass data that has multiple columns:
+# quarter (first column) and y-values as series for the next columns.
+# There will be a bar for each row.  That bar will be a stack with each stack
+# having the width of the value in each y-column.
+# The legend is built based on the column names
+# For example,
+#
+# quarter, rule 1, rule 2
+# 2015Q3, 100,     75
+# 2016Q1, 150,     50
+#
+# Will result in two bars, each consisting of two sub stacks.
+# The first bar will be total height of 175 and split into two stacks one from
+# 0-100 and the other from 100-175.
+# The second bar will be a total height of 200 and split into two stacks one
+# form 0-150 and the second from 150-200.
+# The color of the first stacks for each bar will be the same and will be
+# labeled as "rule 1" on the legend.  Similarly for the second stacks labeled
+# "rule 2".
+#
+# To get scaled or not scaled counts, just do scaling before passing to
+# makeBarChart function
+#
+# Outputting as png because png works with google docs.
+
+# NOTE: slide numbers may no longer be accurate
+
+
+###########################################################################
+##                   subset to only 2015Q1 and 2016Q1                    ##
+###########################################################################
+
+allp <- all
+lafp <- laf
+srcp <- src
+
+if (!dir.exists(paste0(params$directory, "/plots"))){
+  dir.create(paste0(params$directory, "/plots"))
+}
+
+# png("./plots/facts_total.png", width = 800, height = 300)
+# makeBarplot(all[ , c(1, ncol(all))], singlecol, legend = FALSE, ymax = 1000000000)
+# dev.off()
+# 
+# 
+# makeBarplot(all[ , c(1, ncol(all))], singlecol, legend = FALSE, ymax = 500000000)
+
+# Plot styles:
+#  source: all, laf, src
+#  rules: all, no15, only15
+#  scale: count, per1k
+#  style: stack, mono
+#  year: __, 2014
+
+# # all, all, per1k, mono
+# png("./rule_violations_all_all_per1k_mono.png", width = 800, height = 300)
+# makeBarplot(data.frame(quarter = allp[ , 1], rule = apply(allp[ , 2:(ncol(allp)-1)], 1, sum, na.rm = T) / allp$count * 1000),
+#             singlecol, legend = FALSE, ymax = 4)
+# dev.off()
+
+## Slide 1
+# all, all, per1k, stack
+png(paste0(params$directory, "/plots/rule_violations_all_all_per1k_stack.png"), width = 800, height = 300)
+makeBarplot(cbind(quarter = allp[ , 1], allp[ , ruleorder] / allp$count * 1000),
+            plotcols, legend = TRUE, ymax = 25)
+# title(main = "Rule Results per Quarter (all filers), per 1k facts")
+dev.off()
+
+
+# # all, all, count, mono
+# png("./rule_violations_all_all_count_mono.png", width = 800, height = 300)
+# makeBarplot(data.frame(quarter = allp[ , 1], rule = apply(allp[ , ruleorder], 1, sum, na.rm = T)),
+#             singlecol, legend = FALSE, ymax = 300000)
+# dev.off()
+# 
+# 
+# # all, all, count, stack
+# png("./rule_violations_all_all_count_stack.png", width = 800, height = 300)
+# makeBarplot(allp[ , c(1, ruleorder)], plotcols, legend = TRUE, ymax = 400000)
+# dev.off()
+# 
+# 
+# # all, only15, per1k, mono
+# png("./rule_violations_all_only15_per1k_mono.png", width = 800, height = 300)
+# makeBarplot(data.frame(quarter = allp[ , 1], rule = allp[ , which(colnames(allp)=='Rule 0015')] / allp$count * 1000),
+#             singlecol, legend = FALSE, ymax = 3)
+# dev.off()
+# 
+# 
+# # all, only15, per1k, stack
+# png("./rule_violations_all_only15_per1k_stack.png", width = 800, height = 300)
+# makeBarplot(data.frame(quarter = allp[ , 1], 'rule 0015' = allp[, which(colnames(allp)=='Rule 0015')] / allp$count * 1000),
+#             plotcols[2], legend = TRUE, ymax = 3)
+# dev.off()
+# 
+# # all, only01, per1k, mono
+# png("./rule_violations_all_only01_per1k_mono.png", width = 800, height = 300)
+# makeBarplot(data.frame(quarter = allp[ , 1], rule = allp[ , which(colnames(allp)=='Rule 0001')] / allp$count * 1000),
+#             singlecol, legend = FALSE, ymax = 3)
+# dev.off()
+# 
+# # all, only01, per1k, stack
+# png("./rule_violations_all_only01_per1k_stack.png", width = 800, height = 300)
+# makeBarplot(data.frame(quarter = allp[ , 1], 'rule 0001' = allp[, which(colnames(allp)=='Rule 0001')] / allp$count * 1000),
+#             plotcols[1], legend = TRUE, ymax = 3)
+# dev.off()
+# 
+# # all, no15, no01, per1k, mono
+# png("./rule_violations_all_no15_no01_per1k_mono.png", width = 800, height = 300)
+# makeBarplot(data.frame(quarter = allp[ , 1], rule = apply(allp[ , -c(1, which(colnames(allp)=='Rule 0015'), which(colnames(allp)=='Rule 0001'), ncol(allp))], 1, sum, na.rm = T) / allp$count * 1000),
+#             singlecol, legend = FALSE, ymax = 0.5)
+# dev.off()
+
+# Slide 4
+# all, no15, no01, per1k, stack
+png(paste0(params$directory, "/plots/rule_violations_all_no15_no01_per1k_stack.png"), width = 800, height = 300)
+makeBarplot(cbind(quarter = allp[ , 1], allp[ , ruleorder[-c(1,2)]] / allp$count * 1000),
+            plotcols[-c(1,2)], legend = TRUE, ymax = 1.5)
+dev.off()
+
+# # laf, all, count, mono
+# png("./rule_violations_laf_all_count_mono.png", width = 800, height = 300)
+# makeBarplot(data.frame(quarter = lafp[ , 1], rule = apply(lafp[ , c(-1, -ncol(lafp))], 1, sum)),
+#             singlecol, legend = FALSE, ymax = 100000)
+# dev.off()
+# 
+# 
+# # laf, all, count, stack
+# png("./rule_violations_laf_all_count_stack.png", width = 800, height = 300)
+# makeBarplot(lafp[ , c(1, ruleorder)], plotcols, legend = FALSE, ymax = 100000)
+# dev.off()
+
+## Slide 2
+# laf, all, per1k, stack
+png(paste0(params$directory, "/plots/rule_violations_laf_all_per1k_stack.png"), width = 800, height = 300)
+makeBarplot(cbind(quarter = lafp[ , 1], lafp[ , ruleorder] / lafp$count * 1000),
+            plotcols, legend = TRUE, ymax = 25)
+dev.off()
+
+# # src, all, count, mono
+# png("./rule_violations_src_all_count_mono.png", width = 800, height = 300)
+# makeBarplot(data.frame(quarter = srcp[ , 1], rule = apply(srcp[ , -c(1, ncol(srcp))], 1, sum)),
+#             singlecol, legend = FALSE, ymax = 30000)
+# dev.off()
+# 
+# 
+# # src, all, count, stack
+# png("./rule_violations_src_all_count_stack.png", width = 800, height = 300)
+# makeBarplot(srcp[ , c(1, ruleorder)], plotcols, legend = FALSE, ymax = 30000)
+# dev.off()
+
+# Slide 3
+# src, all, per1k, stack
+png(paste0(params$directory, "/plots/rule_violations_src_all_per1k_stack.png"), width = 800, height = 300)
+makeBarplot(cbind(quarter = srcp[ , 1], srcp[ , ruleorder] / srcp$count * 1000),
+            plotcols, legend = TRUE, ymax = 25)
+dev.off()
+
+
+# # laf, no15, no01, count, mono
+# png("./rule_violations_laf_no15_no01_count_mono.png", width = 800, height = 300)
+# makeBarplot(data.frame(quarter = lafp[ , 1], rule = apply(lafp[ , -c(1, which(colnames(lafp)=='Rule 0015'), which(colnames(lafp)=='Rule 0001'), ncol(lafp))], 1, sum, na.rm = T)),
+#             singlecol, legend = FALSE, ymax = 5000)
+# dev.off()
+# 
+# 
+# # laf, no15, no01, count, stack
+# png("./rule_violations_laf_no15_no01_count_stack.png", width = 800, height = 300)
+# makeBarplot(lafp[ , c(1, ruleorder[-c(1,2)])],
+#             plotcols[-c(1,2)], legend = TRUE, ymax = 5000)
+# dev.off()
+
+# Slide 5
+# laf, no15, no01, per1k, stack
+png(paste0(params$directory, "/plots/rule_violations_laf_no15_no01_per1k_stack.png"), width = 800, height = 300)
+makeBarplot(cbind(quarter = lafp[ , 1], lafp[ruleorder[-c(1,2)]] / lafp$count * 1000),
+            plotcols[-c(1,2)], legend = TRUE, ymax = 1)
+dev.off()
+
+# # src, no15, no01, count, mono
+# png("./rule_violations_src_no15_no01_count_mono.png", width = 800, height = 300)
+# makeBarplot(data.frame(quarter = srcp[ , 1], rule = apply(srcp[ , -c(1, which(colnames(lafp)=='Rule 0015'), which(colnames(lafp)=='Rule 0001'), ncol(lafp))], 1, sum)),
+#             singlecol, legend = FALSE, ymax = 10000)
+# dev.off()
+# 
+# # src, no15, count, stack
+# png("./rule_violations_src_no15_no01_count_stack.png", width = 800, height = 300)
+# makeBarplot(srcp[ , c(1, ruleorder[-c(1,2)])],
+#             plotcols[-c(1,2)], legend = TRUE, ymax = 10000)
+# dev.off()
+
+# Slide 6
+# src, no15, per1k, stack
+png(paste0(params$directory, "/plots/rule_violations_src_no15_no01_per1k_stack.png"), width = 800, height = 300)
+makeBarplot(cbind(quarter = srcp[ , 1], srcp[ruleorder[-c(1,2)]] / srcp$count * 1000),
+            plotcols[-c(1,2)], legend = TRUE, ymax = 3.5)
+dev.off()
+
+
+# # all, no15, count, mono
+# png("./rule_violations_all_no15_no01_count_mono.png", width = 800, height = 300)
+# makeBarplot(data.frame(quarter = allp[ , 1], rule = apply(allp[ , -c(1, which(colnames(lafp)=='Rule 0015'), which(colnames(lafp)=='Rule 0001'), ncol(lafp))], 1, sum, na.rm = T)),
+#             singlecol, legend = FALSE, ymax = 20000)
+# dev.off()
+# 
+# 
+# # all, no15, count, stack
+# png("./rule_violations_all_no15_no01_count_stack.png", width = 800, height = 300)
+# makeBarplot(allp[ , c(1, ruleorder[-c(1,2)])],
+#             plotcols[-c(1,2)], legend = TRUE, ymax = 20000)
+# dev.off()
+
+
+### PRINT TABLE DATA
+
+# 
+table_all <- cbind(cbind(paste(str_split_fixed(all$quarter, '(?=Q)', 2)[,2],
+                               str_split_fixed(all$quarter, '(?=Q)', 2)[,1])), cikall$filings[which(str_detect(cikall$quarter, gsub('Q', '.', period)))],
+                   all$count, apply(all[ , 2:(ncol(all)-1)], 1, sum, na.rm = T),
+                   all[['Rule 0015']], all[['Rule 0001']],
+                   apply(all[ , -c(1, which(colnames(all) %in% c('Rule 0015', 'Rule 0001')), ncol(all))], 1, sum, na.rm = T))[rev(rownames(all)),]
+write.table(table_all, file = paste0(params$directory, "/plots/rule_violations_table_all"), col.names = F, row.names = F)
+# for google slides tables
+write_csv(as.data.frame(table_all), paste0(params$directory, "/plots/rule_violations_table_all.csv"))
+
+table_laf <- cbind(cbind(paste(str_split_fixed(laf$quarter, '(?=Q)', 2)[,2], str_split_fixed(laf$quarter, '(?=Q)', 2)[,1])),
+                   subset(cikstatus[which(str_detect(cikstatus$quarter, gsub('Q', '.', period))),], filer_category == 'Large Accelerated Filer')$filings,
+                   laf$count, apply(laf[ , 2:(ncol(laf)-1)], 1, sum, na.rm = T), laf[['Rule 0015']], laf[['Rule 0001']],
+                   apply(laf[ , -c(1, which(colnames(laf) %in% c('Rule 0015', 'Rule 0001')), ncol(laf))], 1, sum, na.rm = T))[rev(rownames(laf)), ]
+write.table(table_laf, file = paste0(params$directory, "/plots/rule_violations_table_laf"), col.names = F, row.names = F)
+write_csv(as.data.frame(table_laf), paste0(params$directory, "/plots/rule_violations_table_laf.csv"))
+
+
+table_src <- cbind(cbind(paste(str_split_fixed(src$quarter, '(?=Q)', 2)[,2], str_split_fixed(src$quarter, '(?=Q)', 2)[,1])),
+                   subset(cikstatus[which(str_detect(cikstatus$quarter, gsub('Q', '.', period))),], filer_category == 'Smaller Reporting Company')$filings,
+                   src$count, apply(src[ , 2:(ncol(src)-1)], 1, sum, na.rm = T), src[['Rule 0015']], src[['Rule 0001']],
+                   apply(src[ , -c(1, which(colnames(src) %in% c('Rule 0015', 'Rule 0001')), ncol(src))], 1, sum, na.rm = T))[rev(rownames(src)), ]
+write.table(table_src, file = paste0(params$directory, "/plots/rule_violations_table_src"), col.names = F, row.names = F)
+write_csv(as.data.frame(table_src), paste0(params$directory, "/plots/rule_violations_table_src.csv"))
+
+write.table(count_data_side, file = paste0(params$directory, "/plots/unique_dp_counts"), col.names = c("Year", "Unique Extension Elements", "Extension Fact Count", "Unique GAAP Elements", "GAAP Fact Count"))
+write_csv(as.data.frame(count_data_side), paste0(params$directory, "/plots/unique_dp_counts.csv"))
+
+
+# all
+# 
+# laf
+# 
+# src
+# 
+# cikall
+# 
+# cikstatus
+
+### modelines
+# vim: fdm=expr fde=getline(v\:lnum)=~'^###.*'?'>1'\:'1':
+```
+
+
+
+ <!-- rmarkdown::render("./slides_HTML.Rmd", output_format = "ioslides_presentation", output_file = "test_slides", -->
+ <!--                   params = list(directory = "/Users/bradwest/Google_Drive/Projects/DQ_requests/DQC_slides", -->
+ <!--                                 username = "web_query", -->
+ <!--                                 password = "W0rkiv@", -->
+ <!--                                 dbserver = "rltest.markv.com", -->
+ <!--                                 dbport = "8804", -->
+ <!--                                 dbname = "debug3_db", -->
+ <!--                                 data_source = "database", -->
+ <!--                                 file_input = "DQC_2014_onwards.csv", -->
+ <!--                                 start_year = 2015, -->
+ <!--                                 end_year = "`lubridate::year(Sys.time())`")) -->
+
+
+<!-- Make sure that your proper directory is set here so that the plots are sourced correctly -->
+
+## Rules Effective January 1, 2017
+
+Rule 01 - Axis with Inappropriate Members  
+Rule 04 - Element values are equal  
+Rule 05 - Context dates after period end date  
+Rule 06 - DEI and block tag context dates  
+<!-- Rule 08 -   -->
+Rule 09 - Element A must be less than or equal to element B  
+<!-- Rule 11 -  -->
+Rule 13 - Negative Values with Dependence  
+Rule 14 - Negative Values with No Dimensions  
+Rule 15 - Negative values  
+Rule 18 - Deprecated Element is Used in the Filing  
+Rule 33 - Document period end date context  
+Rule 36 - Document period end date context/fact value check  
+Rule 41 - Axis with a Default Member that Differs from the US GAAP Taxonomy  
+
+## Rule Results per Quarter (all filers) | Per 1k facts
+
+```{r echo=FALSE, out.width='100%'}
+knitr::include_graphics("./plots/rule_violations_all_all_per1k_stack.png")
+```
+
+## Rule Results per Quarter all rules (LAF) | Per 1k facts
+
+```{r echo=FALSE, out.width='100%'}
+knitr::include_graphics("./plots/rule_violations_laf_all_per1k_stack.png")
+```
+
+## Rule Results per Quarter all rules (SRC) | Per 1k facts
+
+```{r echo=FALSE, out.width='100%'}
+knitr::include_graphics("./plots/rule_violations_src_all_per1k_stack.png")
+```
+
+## Rule Results -- Excluding Rule 01 and 15 (all filers) | Per 1k facts
+
+```{r echo=FALSE, out.width='100%'}
+knitr::include_graphics("./plots/rule_violations_all_no15_no01_per1k_stack.png")
+```
+
+## Rule Results -- Excluding Rule 01 and 15 (LAF) | Per 1k facts
+
+```{r echo=FALSE, out.width='100%'}
+knitr::include_graphics("./plots/rule_violations_laf_no15_no01_per1k_stack.png")
+```
+
+## Rule Results -- Excluding Rule 01 and 15 (SRC) | Per 1k facts
+
+```{r echo=FALSE, out.width='100%'}
+knitr::include_graphics("./plots/rule_violations_src_no15_no01_per1k_stack.png")
+```
+
+## Results by Quarter - All Filers
+
+```{r}
+knitr::kable(read.table("./plots/rule_violations_table_all"),
+                        col.names = c("Quarter", "Total # of filers (cik)",
+                                      "Total # of facts filed", "All rules", "Rule 15", "Rule 01", "All other rules"), row.names = F, format = "markdown", padding = 0)
+```
+
+## Results by Quarter - LAF
+
+```{r}
+knitr::kable(read.table("./plots/rule_violations_table_laf"),
+                        col.names = c("Quarter", "Total # of filers (cik)",
+                                      "Total # of facts filed", "All rules", "Rule 15", "Rule 01", "All other rules"), row.names = F)
+```
+
+## Results by Quarter - SRC
+
+```{r, results = 'asis'}
+knitr::kable(read.table("./plots/rule_violations_table_src"),
+                        col.names = c("Quarter", "Total # of filers (cik)",
+                                      "Total # of facts filed", "All rules", "Rule 15", "Rule 01", "All other rules"), row.names = F)
+```
+
+## Fact Counts By Element Type
+
+```{r, results = 'asis'}
+knitr::kable(read.table("./plots/unique_dp_counts"),
+                        col.names = c("Year", "Unique Extension Elements",
+                                      "Extension Fact Count", "Unique GAAP Elements", "GAAP Fact Count"), row.names = F)
+```
