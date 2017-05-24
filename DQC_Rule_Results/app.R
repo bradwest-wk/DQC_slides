@@ -34,7 +34,8 @@ ui <- fluidPage(
      
       
       mainPanel(
-        actionButton(inputId = "slides", label = "Generate Slides", width = '100%')
+        actionButton(inputId = "slides", label = "Generate Slides")#,
+        # downloadButton(outputId = "download", label = "Download Plots and Tables")
       )
    )
 )
@@ -52,7 +53,7 @@ server <- function(input, output) {
     # file.copy("/Users/bradwest/Google_Drive/Projects/DQ_requests/DQC_slides/DQC_Rule_Results/slides_HTML_parameterized.Rmd", tempReport, overwrite = TRUE)
     
     # render the slides
-      rmarkdown::render("/Users/bradwest/Google_Drive/Projects/DQ_requests/DQC_slides/slides_HTML_parameterized.Rmd",
+      rmarkdown::render("./slides_HTML_parameterized.Rmd",
                         output_format = "ioslides_presentation",
                         output_file = as.character(input$file_output),
                         params = list(directory = as.character(input$directory),
@@ -68,10 +69,41 @@ server <- function(input, output) {
                                       start_date = as.character(input$start_date),
                                       end_date = as.character(input$end_date))
                         )
-    }
-  )
+  })
+  #   
+  #   table_all_csv <- read.csv("./plots/rule_violations_table_all.csv")
+  #   table_laf_csv <- read.csv("./plots/rule_violations_table_laf.csv")
+  #   table_src_csv <- read.csv("./plots/rule_violations_table_src.csv")
+  #   table_dp_counts <- read.csv("./plots/unique_dp_counts.csv")
+  #   library(png)
+  #   image1 <- readPNG("./plots/rule_violations_all_all_per1k_stack.png")
+  #   image2 <- readPNG("./plots/rule_violations_all_no15_no01_per1k_stack.png")
+  #   image3 <- readPNG("./plots/rule_violations_laf_all_per1k_stack.png")
+  #   image4 <- readPNG("./plots/rule_violations_laf_no15_no01_per1k_stack.png")
+  #   image5 <- readPNG("./plots/rule_violations_src_all_per1k_stack.png")
+  #   image6 <- readPNG("./plots/rule_violations_src_no15_no01_per1k_stack.png")
+  # 
+  # output$download <- downloadHandler(filename = paste0("dqc_slides", Sys.Date(), ".zip"),
+  #                                    content = function(file){
+  #                                        fs <- c("rule_violations_table_all.csv",
+  #                                                "rule_violations_table_laf.csv",
+  #                                                "rule_violations_table_src.csv",
+  #                                                "rule_violations_all_all_per1k_stack.png"
+  #                                                )
+  #                                        write.csv(table_all_csv, file = "rule_violations_table_all.csv")
+  #                                        write.csv(table_laf_csv, file = "rule_violations_table_laf.csv")
+  #                                        write.csv(table_src_csv, file = "rule_violations_table_src.csv")
+  #                                        writePNG(image1, target = "rule_violations_all_all_per1k_stack.png")
+  #                                        writePNG(image2, target = "./plots/rule_violations_all_no15_no01_per1k_stack.png")
+  #                                        writePNG(image3, target = "./plots/rule_violations_laf_all_per1k_stack.png")
+  #                                        writePNG(image4, target = "./plots/rule_violations_laf_no15_no01_per1k_stack.png")
+  #                                        writePNG(image5, target = "./plots/rule_violations_src_all_per1k_stack.png")
+  #                                        writePNG(image6, target = "./plots/rule_violations_src_no15_no01_per1k_stack.png")
+  #                                        
+  #                                        zip(zipfile = file, files = fs)
+  #                                    },
+  #                                    contentType = "application/zip")
 }
 
 # Run the application 
 shinyApp(ui = ui, server = server)
-
