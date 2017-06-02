@@ -156,6 +156,15 @@ factsByQuarter <- function(datain, laf = FALSE, src = FALSE)
 
 if (params$data_source=="file"){
   rulesdata <- read_csv(paste0(params$directory, "/", params$file_input))
+} else if (params$data_source == "query"){
+    # see _test_query_via_system.R for description
+    start_date <- paste0("'", params$start_date, "'")
+    end_date <- paste0("'", params$end_date, "'")
+    command <- "./query_errors.sh"
+    arguments <- c(start_date, end_date, "./errors_results.csv")
+    # need to wait until command is finished executing, stderr to error file
+    system2(command, args = arguments, wait = TRUE, stderr = "./query_stderr.log")
+    rulesdata <- read_csv("./errors_results.csv")
 } else {
   library(RPostgreSQL)
   db_user <- params$username
@@ -660,6 +669,14 @@ src <- src[order(src$quarter),]
 ### GET GAAP VS. EXTENSION COUNTS FOR PERIOD
 if (params$data_source_counts=="file"){
   ext_count_data <- read_csv(paste0(params$directory, "/", params$counts_file_input))
+} else if (params$data_source_counts=="query"){
+    # # see _test_query_via_system.R for description
+    # command <- paste0("echo '\\i ~/Google_Drive/SQL/current_session.sql \\\\ EXECUTE test_filing('\\''",
+    #                   params$start_date, "'\\'', '\\''", params$end_date,
+    #                   "'\\'')' | psql -h rltest.markv.com -p8084 -d debug3_db -U postgres -q")
+    # # need to wait until command is finished executing, stderr to error file
+    # system2(command, wait = TRUE)
+    # rulesdata <- read_csv("./errors_results.csv")    
 } else {
   library(RPostgreSQL)
   db_user <- params$username
