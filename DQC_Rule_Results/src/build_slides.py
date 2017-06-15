@@ -2,17 +2,13 @@ from __future__ import print_function
 import httplib2
 import os
 import webbrowser
-import uuid
 import time
 import csv
 
 from apiclient import discovery
-from oauth2client import client
 from oauth2client.client import flow_from_clientsecrets
 from oauth2client import tools
 from apiclient import errors
-from oauth2client.file import Storage
-import json
 
 try:
     import argparse
@@ -21,7 +17,7 @@ except ImportError:
     flags = None
 
 
-gen_uuid = lambda : str(uuid.uuid4()) # get random UUID string
+# gen_uuid = lambda : str(uuid.uuid4()) # get random UUID string, not used now
 
 # If modifying these scopes, delete your previously saved credentials
 # at ~/.credentials/slides.googleapis.com-python-quickstart.json
@@ -29,6 +25,8 @@ SCOPES = 'https://www.googleapis.com/auth/presentations https://www.googleapis.c
 CLIENT_SECRET_FILE = 'client_secret.json'
 APPLICATION_NAME = 'Build Slides API'
 
+# The "flow" is specific to the OAuth2 client and detailed on the Google
+# APIs website
 flow = flow_from_clientsecrets('./client_secret.json', scope = SCOPES,
                                redirect_uri= 'urn:ietf:wg:oauth:2.0:oob')
 auth_uri = flow.step1_get_authorize_url()
@@ -36,12 +34,11 @@ webbrowser.open_new(auth_uri)
 
 auth_code = ""
 
+# Asks user to give the authentication code which opens in browser
 while len(auth_code) == 0:
     auth_code = raw_input("Enter authorization code: ")
 
-
 credentials = flow.step2_exchange(auth_code)
-# print(credentials)
 
 http_auth = credentials.authorize(httplib2.Http())
 drive_service = discovery.build('drive', 'v3', http=http_auth)
@@ -70,28 +67,30 @@ def copy_presentation(service, origin_file_id, copy_title):
   return None
 
 
-# presentation_id = '1zh5fiRBkS91quNcri-qjDLW8AkKNVBwcOUqWJoi_QNQ'
 template_presentation = '1Zxc2mO_FT5sAHCK8vSnWkVUtoIldVqTdG4kT-OFKc5w'
 
 print("** Copying presentation")
+
+# copies the template presentation
 deck_title = 'DQC_Rule_Results_' + time.strftime("%Y-%m-%d")
 drive_response = copy_presentation(drive_service, template_presentation,
                                    deck_title)
 presentation_copy_id = drive_response.get('id')
 
-# when actually copying the template, will need to change below presentation
-# id back to presentation_copy_id, which we get from the drive_response
-
+# grabs the newly copied presentation
 presentation = slide_service.presentations().get(
     presentationId=presentation_copy_id).execute()
 slides = presentation.get('slides')
 
+# gets the deck and titleSlide IDs from the presentation
 deckID = presentation['presentationId']
-titleSlide = presentation['slides'][0]  # title slide IDs
+titleSlide = presentation['slides'][0]
 
 print("** Uploading temp images")
-# temporarily upload image to google_drive
-plot_dir = '/Users/bradwest/Google_Drive/Projects/DQ_requests/DQC_slides/DQC_Rule_results/plots'
+
+# temporarily upload image to google_drive from local copy
+project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+plot_dir=os.path.join(project_dir, 'plots')
 image_paths = [
     os.path.join(plot_dir, 'rule_violations_all_all_per1k_stack.png'),
     os.path.join(plot_dir, 'rule_violations_laf_all_per1k_stack.png'),
@@ -116,6 +115,7 @@ for i in range(len(image_paths)):
               'mimeType': 'image/png'},
         media_body=image_paths[i]).execute()
     file_ids.append(upload.get('id'))
+    # need image url for inserting into slide
     image_url = '%s&access_token=%s' % (
         drive_service.files().get_media(fileId=file_ids[i]).uri,
         credentials.access_token)
@@ -139,23 +139,6 @@ for i in range(len(table_paths)):
 
     tbl_data.append(years)
 
-
-
-# upload = drive_service.files().create(
-#     body={'name': 'rule_violations_all_all_per1k_stack',
-#           'mimeType': 'image/png'},
-#     media_body=image_file_path).execute()
-# file_id = upload.get('id')
-# # print(file_id)
-#
-# image_url = '%s&access_token=%s' % (
-#     drive_service.files().get_media(fileId=file_id).uri, credentials.access_token)
-# print(image_url)
-
-
-# use below to delete file after use
-# drive_service.files().delete(fileId=file_id).execute()
-
 # tableSlide = presentation['slides'][8]
 # try:
 #     # parsed = json.loads(titleSlide)
@@ -163,22 +146,22 @@ for i in range(len(table_paths)):
 # except:
 #     print("couldn't print that junk")
 
+# puts image slides into an array
 image_slides = []
 for i in range(2, 8):
     image_slides.append(presentation['slides'][i])
 
 print("** Identifying image and table locations")
 
-# loop over the image slides, an get object id for the rectangle in each
-# slide, placing in obj list.
+# loop over the image slides, an get object id for the rectangle in each slide
 obj_rect = []
 for i in range(2, 8):
     for obj in presentation['slides'][i]['pageElements']:
         if obj['shape']['shapeType'] == 'RECTANGLE':
             obj_rect.append(obj)
 
-# print(len(obj_rect))
 
+# same as above for the table slides
 table_slides = []
 for i in range(8, 12):
     table_slides.append(presentation['slides'][i])
@@ -189,20 +172,13 @@ for i in range(8, 12):
         if 'table' in obj:
             obj_tbl.append(obj)
 
-# print("number of table objects: ", len(obj_tbl))
-
-
 # grabs the subtitle
 subtitleID = titleSlide['pageElements'][1]['objectId']
-
-# print(subtitleID)
-# subtitleContent = \
-#     titleSlide['pageElements'][1]['shape'] \
-#         ['text']['textElements'][1]['textRun']['content']
-# print(subtitleContent)
-
+# Subtitle will be replaced with current date
 current_date = time.strftime("%B %d, %Y")
 
+# requests according to the api format.  Pretty print json of a slides object
+# to get a better idea of what is in each object
 reqs = [
     # {'replaceAllText': {'findText': 'current_date',
     #  'replaceText': current_date}}
@@ -339,7 +315,8 @@ reqs = [
     }},
     {'deleteObject': {'objectId': obj_rect[5]['objectId']}},
 ]
-# might need to make this be i + 1 since no headers in data files
+# use a list comprehension for updating the text in each table object, for the
+# four tables in the slide deck
 reqs.extend([
     {'insertText': {
         'objectId': obj_tbl[0]['objectId'],
@@ -374,12 +351,14 @@ reqs.extend([
 
 print("** Updating presentation")
 
+# send requests to the API
 slide_service.presentations().batchUpdate(
     body={'requests': reqs},
     presentationId=presentation_copy_id).execute()
 
 print("** Deleting temp images from Drive")
-# delete temp images
+
+# delete the temp images that were previously uploaded to the drive API
 for id in file_ids:
     try:
         drive_service.files().delete(fileId=id).execute()
