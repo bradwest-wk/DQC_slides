@@ -52,5 +52,5 @@ The script will then use either a flat file or database query to generate the im
 
 ## Acknowledgements
 
-* This project depends heavily on parsing code in R  written by **Allen Bross** and **Michael Lerch**. 
+* This project depends heavily on parsing code in R  written by**Allen Bross**and**Michael Lerch**. 
 
