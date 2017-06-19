@@ -77,26 +77,31 @@ server <- function(input, output) {
     # tempReport, overwrite = TRUE)
     
     # write the command to an R file
-      rmarkdown::render(
-        "./slides_HTML_parameterized.Rmd",
-        output_format = "ioslides_presentation",
-        output_file = as.character(input$file_output),
-        params = list(  # directory = as.character(input$directory), 
-                      username = as.character(input$username),
-                      password = as.character(input$password),
-                      dbserver = as.character(input$dbserver),
-                      dbport = as.numeric(input$dbport),
-                      dbname = as.character(input$dbname),
-                      data_source = as.character(input$data_source),
-                      file_input = as.character(input$file_input),
-                      data_source_counts = as.character(
-                        input$data_source_counts),
-                      counts_file_input = as.character(
-                        input$counts_file_input),
-                      start_date = as.character(input$start_date),
-                      end_date = as.character(input$end_date)
-                      )
-        )
+      main_R <- file("./R/main.R")
+      writeLines(paste0("rmarkdown::render(
+        \"./slides_HTML_parameterized.Rmd\",
+                        output_format = \"ioslides_presentation\",
+                        output_file = as.character(\"", input$file_output, "\"),
+                        params = list(username = as.character(\"", input$username, "\"),
+                        password = as.character(\"", input$password, "\"),
+                        dbserver = as.character(\"", input$dbserver, "\"),
+                        dbport = as.numeric(", input$dbport, "),
+                        dbname = as.character(\"", input$dbname, "\"),
+                        data_source = as.character(\"", input$data_source, "\"),
+                        file_input = as.character(\"", input$file_input, "\"),
+                        data_source_counts = as.character(
+                        \"", input$data_source_counts, "\"),
+                        counts_file_input = as.character(
+                        \"", input$counts_file_input, "\"),
+                        start_date = as.character(\"", input$start_date, "\"),
+                        end_date = as.character(\"", input$end_date, "\")
+                        ))"
+        ), main_R)
+      # send the command to the main script
+      curr_dir <- getwd()
+      command <- paste(file.path(curr_dir, "main.sh"))
+      system2(command, wait = TRUE)
+      
   })
   #   
   #   table_all_csv <- read.csv("./plots/rule_violations_table_all.csv")

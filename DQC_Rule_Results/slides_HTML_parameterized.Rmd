@@ -13,13 +13,13 @@ params:
   dbserver: "rltest.markv.com"
   dbport: 8084
   dbname: "debug3_db"
-  data_source: "database"
-  file_input: "DQC_2014_onwards.csv"
+  data_source: "file"
+  file_input: "~/Google_Drive/Projects/DQC_slides/DQC_Rule_Results/inst/extdata/data_raw_16_17.csv"
   # exclude_rules: c("Rule 0008", "Rule 0011")
-  data_source_counts: "query"
-  counts_file_input: "gaap_v_ext_unique_dp.csv"
-  start_date: "2017-04-01"
-  end_date: "2017-06-15"
+  data_source_counts: "file"
+  counts_file_input: "~/Google_Drive/Projects/DQC_slides/DQC_Rule_Results/inst/extdata/gaap_v_ext_unique_dp.csv"
+  start_date: "2016-01-01"
+  end_date: "2017-04-01"
 ---
 
 ```{r setup, include=FALSE}
@@ -34,12 +34,12 @@ knitr::opts_chunk$set(echo = FALSE)
     dbserver = "rltest.markv.com",
     dbport = 8084,
     dbname = "debug3_db",
-    data_source = "database",
-    file_input = "~/Google_Drive/Projects/DQC_slides/data/data_raw_14_17.csv",
-    data_source_counts = "query",
+    data_source = "file",
+    file_input = "~/Google_Drive/Projects/DQC_slides/DQC_Rule_Results/inst/extdata/data_raw_16_17.csv",
+    data_source_counts = "file",
     counts_file_input =
-      "~/Google_Drive/Projects/DQC_slides/data/gaap_v_ext_unique_dp.csv",
-    start_date = "2014-01-01",
+      "~/Google_Drive/Projects/DQC_slides/DQC_Rule_Results/inst/extdata/gaap_v_ext_unique_dp.csv",
+    start_date = "2016-01-01",
     end_date = "2017-04-01")
 ```
 
@@ -167,7 +167,7 @@ if (params$data_source=="file"){
     print("**Querying Errors")
     start_date <- paste0("'", params$start_date, "'")
     end_date <- paste0("'", params$end_date, "'")
-    command <- paste("bash", file.path(top_dir, "src/query_errors.sh"))
+    command <- file.path(top_dir, "src/query_errors.sh")
     arguments <- c(start_date, end_date, file.path(top_dir, "data/errors_results.csv"))
     # need to wait until command is finished executing, stderr to error file
     system2(command, args = arguments, wait = TRUE, stderr = file.path(top_dir, "log/query_stderr.log"))
@@ -863,7 +863,7 @@ if (!dir.exists(file.path(top_dir, "plots"))){
 
 ## Slide 1
 # all, all, per1k, stack
-png(file.path(top_dir, "plots/rule_violations_all_all_per1k_stack.png"), width = 800, height = 300)
+png(file.path(top_dir, "plots/rule_violations_all_all_per1k_stack.png"), width = 2400, height = 900, res = 240)
 makeBarplot(cbind(quarter = allp[ , 1], allp[ , ruleorder] / allp$count * 1000),
             plotcols, legend = TRUE, ymax = 30)
 # title(main = "Rule Results per Quarter (all filers), per 1k facts")
@@ -871,35 +871,35 @@ dev.off()
 
 # Slide 4
 # all, no15, no01, per1k, stack
-png(file.path(top_dir, "plots/rule_violations_all_no15_no01_per1k_stack.png"), width = 800, height = 300)
+png(file.path(top_dir, "plots/rule_violations_all_no15_no01_per1k_stack.png"), width = 2400, height = 900, res = 240)
 makeBarplot(cbind(quarter = allp[ , 1], allp[ , ruleorder[-c(1,2)]] / allp$count * 1000),
             plotcols[-c(1,2)], legend = TRUE, ymax = 2)
 dev.off()
 
 ## Slide 2
 # laf, all, per1k, stack
-png(file.path(top_dir, "plots/rule_violations_laf_all_per1k_stack.png"), width = 800, height = 300)
+png(file.path(top_dir, "plots/rule_violations_laf_all_per1k_stack.png"), width = 2400, height = 900, res = 240)
 makeBarplot(cbind(quarter = lafp[ , 1], lafp[ , ruleorder] / lafp$count * 1000),
             plotcols, legend = TRUE, ymax = 35)
 dev.off()
 
 # Slide 3
 # src, all, per1k, stack
-png(file.path(top_dir, "plots/rule_violations_src_all_per1k_stack.png"), width = 800, height = 300)
+png(file.path(top_dir, "plots/rule_violations_src_all_per1k_stack.png"), width = 2400, height = 900, res = 240)
 makeBarplot(cbind(quarter = srcp[ , 1], srcp[ , ruleorder] / srcp$count * 1000),
             plotcols, legend = TRUE, ymax = 25)
 dev.off()
 
 # Slide 5
 # laf, no15, no01, per1k, stack
-png(file.path(top_dir, "plots/rule_violations_laf_no15_no01_per1k_stack.png"), width = 800, height = 300)
+png(file.path(top_dir, "plots/rule_violations_laf_no15_no01_per1k_stack.png"), width = 2400, height = 900, res = 240)
 makeBarplot(cbind(quarter = lafp[ , 1], lafp[ruleorder[-c(1,2)]] / lafp$count * 1000),
             plotcols[-c(1,2)], legend = TRUE, ymax = 1.2)
 dev.off()
 
 # Slide 6
 # src, no15, per1k, stack
-png(file.path(top_dir, "plots/rule_violations_src_no15_no01_per1k_stack.png"), width = 800, height = 300)
+png(file.path(top_dir, "plots/rule_violations_src_no15_no01_per1k_stack.png"), width = 2400, height = 900, res = 240)
 makeBarplot(cbind(quarter = srcp[ , 1], srcp[ruleorder[-c(1,2)]] / srcp$count * 1000),
             plotcols[-c(1,2)], legend = TRUE, ymax = 4.5)
 dev.off()
