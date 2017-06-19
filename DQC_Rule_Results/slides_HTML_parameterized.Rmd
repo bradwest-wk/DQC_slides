@@ -680,15 +680,7 @@ if (params$data_source_counts=="file"){
   --Creating a table of datapoints and their sources.
   CREATE TEMPORARY TABLE _tmp_datapoint AS 
   SELECT a.name, a.qname, a.aspect_id, dp.report_id, dp.datapoint_id, rb.cik,
-  CASE 
-  WHEN (rb.filing_date >= '2014-01-01' AND rb.filing_date < '2015-01-01') THEN 2014
-  WHEN (rb.filing_date >= '2015-01-01' AND rb.filing_date < '2016-01-01') THEN 2015 
-  WHEN (rb.filing_date >= '2016-01-01' AND rb.filing_date < '2017-01-01') THEN 2016 
-  WHEN (rb.filing_date >= '2017-01-01' AND rb.filing_date < '2018-01-01') THEN 2017
-  WHEN (rb.filing_date >= '2018-01-01' AND rb.filing_date < '2019-01-01') THEN 2018
-  ELSE date_part('year', rb.filing_date)
-  END
-  AS filing_year,   
+  date_part('year', rb.filing_date) AS filing_year,   
   CASE
   WHEN a.qname LIKE '{http://xbrl.sec.gov%' THEN 'gaap'
   WHEN a.qname LIKE '{http://fasb.org/%' THEN 'gaap'
