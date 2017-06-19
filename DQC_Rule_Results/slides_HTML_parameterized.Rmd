@@ -7,7 +7,7 @@ output:
     widescreen: true
     smaller: true
 params: 
-  directory: "~/Google_Drive/Projects/DQ_requests/DQC_slides"
+  # directory: "~/Google_Drive/Projects/DQC_slides"
   username: "web_query"
   password: "W0rkiv@"
   dbserver: "rltest.markv.com"
@@ -16,10 +16,10 @@ params:
   data_source: "database"
   file_input: "DQC_2014_onwards.csv"
   # exclude_rules: c("Rule 0008", "Rule 0011")
-  data_source_counts: "file"
+  data_source_counts: "query"
   counts_file_input: "gaap_v_ext_unique_dp.csv"
-  start_date: "2016-07-01"
-  end_date: "2017-04-01"
+  start_date: "2017-04-01"
+  end_date: "2017-06-15"
 ---
 
 ```{r setup, include=FALSE}
@@ -27,26 +27,28 @@ knitr::opts_chunk$set(echo = FALSE)
 ```
 
 ```{r eval = FALSE}
-  params = list(directory = "/Users/bradwest/Google_Drive/Projects/DQ_requests/DQC_slides",
-                                username = "web_query",
-                                password = "W0rkiv@",
-                                dbserver = "rltest.markv.com",
-                                dbport = 8084,
-                                dbname = "debug3_db",
-                                data_source = "database",
-                                file_input = "rulesdata_raw_14_17.csv",
-                                data_source_counts = "file",
-                                counts_file_input = "gaap_v_ext_unique_dp.csv",
-                                start_date = "2014-01-01",
-                                end_date = "2017-04-01")
+  params = list(
+    # directory = "/Users/bradwest/Google_Drive/Projects/DQC_slides",
+    username = "web_query",
+    password = "W0rkiv@",
+    dbserver = "rltest.markv.com",
+    dbport = 8084,
+    dbname = "debug3_db",
+    data_source = "database",
+    file_input = "~/Google_Drive/Projects/DQC_slides/data/data_raw_14_17.csv",
+    data_source_counts = "query",
+    counts_file_input =
+      "~/Google_Drive/Projects/DQC_slides/data/gaap_v_ext_unique_dp.csv",
+    start_date = "2014-01-01",
+    end_date = "2017-04-01")
 ```
 
 
-```{r make_slides, echo = FALSE, include = F, eval = FALSE}
+```{r make_slides, echo = FALSE, include = F, eval=TRUE}
 ### TODO:/NOTES:
 
 # The bulk of this code written by Allen Bross and Michael Lerch, 
-# modified by b_west to run as a parameterized r-markdown document
+# modified by Brad West to run as a parameterized r-markdown document
 # and to work in concert with shiny app for generating slidedeck
 
 # - in aggregate(y ~ x) Any NA's in x are ignored, so whenever doing an
@@ -80,7 +82,8 @@ Qbreaks <- as_date(c("2009/01/01", "2009/04/01", "2009/07/01", "2009/10/01",
                      "2014/01/01", "2014/04/01", "2014/07/01", "2014/10/01",
                      "2015/01/01", "2015/04/01", "2015/07/01", "2015/10/01",
                      "2016/01/01", "2016/04/01", "2016/07/01", "2016/10/01",
-                     "2017/01/01", "2017/04/01", "2017/07/01", "2017/10/01"))
+                     "2017/01/01", "2017/04/01", "2017/07/01", "2017/10/01",
+                     "2018/01/01", "2018/04/01", "2018/07/01", "2018/10/01"))
 
 Qnames <- c("2009Q1", "2009Q2", "2009Q3", "2009Q4",
             "2010Q1", "2010Q2", "2010Q3", "2010Q4",
@@ -90,7 +93,8 @@ Qnames <- c("2009Q1", "2009Q2", "2009Q3", "2009Q4",
             "2014Q1", "2014Q2", "2014Q3", "2014Q4",
             "2015Q1", "2015Q2", "2015Q3", "2015Q4",
             "2016Q1", "2016Q2", "2016Q3", "2016Q4",
-            "2017Q1", "2017Q2", "2017Q3", "2017Q4")
+            "2017Q1", "2017Q2", "2017Q3", "2017Q4",
+            "2018Q1", "2018Q2", "2018Q3", "2018Q4")
 
 Qnums <- c(1, 2, 3, 4,
            5, 6, 7, 8,
@@ -153,19 +157,23 @@ factsByQuarter <- function(datain, laf = FALSE, src = FALSE)
 }
 
 ### GET RULES VIOLATIONS DATA DEPENDING ON WHETHER PARAMS INDICATE QUERY OR NOT
+top_dir <- getwd()
 
 if (params$data_source=="file"){
-  rulesdata <- read_csv(paste0(params$directory, "/", params$file_input))
+  print("**Importing Errors")
+  rulesdata <- read_csv(params$file_input)
 } else if (params$data_source == "query"){
     # see _test_query_via_system.R for description
+    print("**Querying Errors")
     start_date <- paste0("'", params$start_date, "'")
     end_date <- paste0("'", params$end_date, "'")
-    command <- "./query_errors.sh"
-    arguments <- c(start_date, end_date, "./errors_results.csv")
+    command <- paste("bash", file.path(top_dir, "src/query_errors.sh"))
+    arguments <- c(start_date, end_date, file.path(top_dir, "data/errors_results.csv"))
     # need to wait until command is finished executing, stderr to error file
-    system2(command, args = arguments, wait = TRUE, stderr = "./query_stderr.log")
-    rulesdata <- read_csv("./errors_results.csv")
+    system2(command, args = arguments, wait = TRUE, stderr = file.path(top_dir, "log/query_stderr.log"))
+    rulesdata <- read_csv(file.path(top_dir, "data/errors_results.csv"))
 } else {
+  print("**Querying Errors")
   library(RPostgreSQL)
   db_user <- params$username
   db_password <- params$password
@@ -502,6 +510,8 @@ SELECT * FROM _tmp_results;
   dbDisconnect(con)
 }
 
+print("**Processing Errors")
+
 rulesdata <- subset(rulesdata, !(form_type %in% c("497", "485APOS", "485BPOS")))
 
 
@@ -575,25 +585,6 @@ cikall <- rulesdata %>%
 # Columns are rules containing number of firings of that rule for each quarter
 # Also a column for total count of facts
 # merge all rules and total facts onto rule 0004
-# all_merge <- merge(merge(merge(merge(merge(merge(merge(merge(merge(merge(merge(merge(merge(merge(ruleByQuarter(rule0001),
-#                                                        ruleByQuarter(rule0004), by = "quarter", all = TRUE),
-#                                                  ruleByQuarter(rule0005), by = "quarter", all = TRUE),
-#                                            ruleByQuarter(rule0006), by = "quarter", all = TRUE),
-#                                      ruleByQuarter(rule0008), by = "quarter", all = TRUE),
-#                                      ruleByQuarter(rule0009), by = "quarter", all = TRUE),
-#                          ruleByQuarter(rule0011), by = "quarter", all = TRUE),
-#                    ruleByQuarter(rule0013), by = "quarter", all = TRUE),
-# ruleByQuarter(rule0014), by = "quarter", all = TRUE),
-#                                ruleByQuarter(rule0015), by = "quarter", all = TRUE),
-# ruleByQuarter(rule0018), by = "quarter", all = TRUE),
-#                          ruleByQuarter(rule0033), by = "quarter", all = TRUE),
-#                    ruleByQuarter(rule0036), by = "quarter", all = TRUE),
-# ruleByQuarter(rule0041), by = "quarter", all = TRUE),
-#              factsByQuarter(filingsdata), by = "quarter", all = TRUE)
-# colnames(all_merge) <- c("quarter","Rule 0001", "Rule 0004", "Rule 0005", "Rule 0006", "Rule 0008",
-#                          "Rule 0009", "Rule 0011", "Rule 0013", "Rule 0014", "Rule 0015", "Rule 0018",
-#                          "Rule 0033", "Rule 0036", "Rule 0041", "count")
-# all_merge <- all_merge[grepl("2014|2015|2016|2017", all$quarter), ]
 
 period_quarters <- Qnames[cut(seq.Date(as.Date(params$start_date), as.Date(params$end_date) - days(1), by = "quarter"), Qbreaks, right = FALSE)]
 # start <- params$start_year
@@ -668,16 +659,10 @@ src <- src[order(src$quarter),]
 
 ### GET GAAP VS. EXTENSION COUNTS FOR PERIOD
 if (params$data_source_counts=="file"){
-  ext_count_data <- read_csv(paste0(params$directory, "/", params$counts_file_input))
-} else if (params$data_source_counts=="query"){
-    # # see _test_query_via_system.R for description
-    # command <- paste0("echo '\\i ~/Google_Drive/SQL/current_session.sql \\\\ EXECUTE test_filing('\\''",
-    #                   params$start_date, "'\\'', '\\''", params$end_date,
-    #                   "'\\'')' | psql -h rltest.markv.com -p8084 -d debug3_db -U postgres -q")
-    # # need to wait until command is finished executing, stderr to error file
-    # system2(command, wait = TRUE)
-    # rulesdata <- read_csv("./errors_results.csv")    
+  print("**Importing datapoint counts")
+  ext_count_data <- read_csv(params$counts_file_input)
 } else {
+  print("**Querying datapoint counts")
   library(RPostgreSQL)
   db_user <- params$username
   db_password <- params$password
@@ -749,6 +734,8 @@ count_data_side <- count_data_side[which(count_data_side[,1] %in% seq(year(param
 colnames(count_data_side) <- c("year", "unique_ext_elements", "ext_fact_count", "unique_gaap_elements", "gaap_fact_count")
 
 ### PLOT FUNCTIONS
+
+print("**Generating Plots")
 
 # Function to make *beautiful* bar plot
 makeBarplot <- function(data, color, ymax = 30000, legend = TRUE)
@@ -870,244 +857,84 @@ allp <- all
 lafp <- laf
 srcp <- src
 
-if (!dir.exists(paste0(params$directory, "/plots"))){
-  dir.create(paste0(params$directory, "/plots"))
+if (!dir.exists(file.path(top_dir, "plots"))){
+  dir.create(file.path(top_dir, "plots"))
 }
-
-# png("./plots/facts_total.png", width = 800, height = 300)
-# makeBarplot(all[ , c(1, ncol(all))], singlecol, legend = FALSE, ymax = 1000000000)
-# dev.off()
-# 
-# 
-# makeBarplot(all[ , c(1, ncol(all))], singlecol, legend = FALSE, ymax = 500000000)
-
-# Plot styles:
-#  source: all, laf, src
-#  rules: all, no15, only15
-#  scale: count, per1k
-#  style: stack, mono
-#  year: __, 2014
-
-# # all, all, per1k, mono
-# png("./rule_violations_all_all_per1k_mono.png", width = 800, height = 300)
-# makeBarplot(data.frame(quarter = allp[ , 1], rule = apply(allp[ , 2:(ncol(allp)-1)], 1, sum, na.rm = T) / allp$count * 1000),
-#             singlecol, legend = FALSE, ymax = 4)
-# dev.off()
 
 ## Slide 1
 # all, all, per1k, stack
-png(paste0(params$directory, "/plots/rule_violations_all_all_per1k_stack.png"), width = 800, height = 300)
+png(file.path(top_dir, "plots/rule_violations_all_all_per1k_stack.png"), width = 800, height = 300)
 makeBarplot(cbind(quarter = allp[ , 1], allp[ , ruleorder] / allp$count * 1000),
             plotcols, legend = TRUE, ymax = 30)
 # title(main = "Rule Results per Quarter (all filers), per 1k facts")
 dev.off()
 
-
-# # all, all, count, mono
-# png("./rule_violations_all_all_count_mono.png", width = 800, height = 300)
-# makeBarplot(data.frame(quarter = allp[ , 1], rule = apply(allp[ , ruleorder], 1, sum, na.rm = T)),
-#             singlecol, legend = FALSE, ymax = 300000)
-# dev.off()
-# 
-# 
-# # all, all, count, stack
-# png("./rule_violations_all_all_count_stack.png", width = 800, height = 300)
-# makeBarplot(allp[ , c(1, ruleorder)], plotcols, legend = TRUE, ymax = 400000)
-# dev.off()
-# 
-# 
-# # all, only15, per1k, mono
-# png("./rule_violations_all_only15_per1k_mono.png", width = 800, height = 300)
-# makeBarplot(data.frame(quarter = allp[ , 1], rule = allp[ , which(colnames(allp)=='Rule 0015')] / allp$count * 1000),
-#             singlecol, legend = FALSE, ymax = 3)
-# dev.off()
-# 
-# 
-# # all, only15, per1k, stack
-# png("./rule_violations_all_only15_per1k_stack.png", width = 800, height = 300)
-# makeBarplot(data.frame(quarter = allp[ , 1], 'rule 0015' = allp[, which(colnames(allp)=='Rule 0015')] / allp$count * 1000),
-#             plotcols[2], legend = TRUE, ymax = 3)
-# dev.off()
-# 
-# # all, only01, per1k, mono
-# png("./rule_violations_all_only01_per1k_mono.png", width = 800, height = 300)
-# makeBarplot(data.frame(quarter = allp[ , 1], rule = allp[ , which(colnames(allp)=='Rule 0001')] / allp$count * 1000),
-#             singlecol, legend = FALSE, ymax = 3)
-# dev.off()
-# 
-# # all, only01, per1k, stack
-# png("./rule_violations_all_only01_per1k_stack.png", width = 800, height = 300)
-# makeBarplot(data.frame(quarter = allp[ , 1], 'rule 0001' = allp[, which(colnames(allp)=='Rule 0001')] / allp$count * 1000),
-#             plotcols[1], legend = TRUE, ymax = 3)
-# dev.off()
-# 
-# # all, no15, no01, per1k, mono
-# png("./rule_violations_all_no15_no01_per1k_mono.png", width = 800, height = 300)
-# makeBarplot(data.frame(quarter = allp[ , 1], rule = apply(allp[ , -c(1, which(colnames(allp)=='Rule 0015'), which(colnames(allp)=='Rule 0001'), ncol(allp))], 1, sum, na.rm = T) / allp$count * 1000),
-#             singlecol, legend = FALSE, ymax = 0.5)
-# dev.off()
-
 # Slide 4
 # all, no15, no01, per1k, stack
-png(paste0(params$directory, "/plots/rule_violations_all_no15_no01_per1k_stack.png"), width = 800, height = 300)
+png(file.path(top_dir, "plots/rule_violations_all_no15_no01_per1k_stack.png"), width = 800, height = 300)
 makeBarplot(cbind(quarter = allp[ , 1], allp[ , ruleorder[-c(1,2)]] / allp$count * 1000),
             plotcols[-c(1,2)], legend = TRUE, ymax = 2)
 dev.off()
 
-# # laf, all, count, mono
-# png("./rule_violations_laf_all_count_mono.png", width = 800, height = 300)
-# makeBarplot(data.frame(quarter = lafp[ , 1], rule = apply(lafp[ , c(-1, -ncol(lafp))], 1, sum)),
-#             singlecol, legend = FALSE, ymax = 100000)
-# dev.off()
-# 
-# 
-# # laf, all, count, stack
-# png("./rule_violations_laf_all_count_stack.png", width = 800, height = 300)
-# makeBarplot(lafp[ , c(1, ruleorder)], plotcols, legend = FALSE, ymax = 100000)
-# dev.off()
-
 ## Slide 2
 # laf, all, per1k, stack
-png(paste0(params$directory, "/plots/rule_violations_laf_all_per1k_stack.png"), width = 800, height = 300)
+png(file.path(top_dir, "plots/rule_violations_laf_all_per1k_stack.png"), width = 800, height = 300)
 makeBarplot(cbind(quarter = lafp[ , 1], lafp[ , ruleorder] / lafp$count * 1000),
             plotcols, legend = TRUE, ymax = 35)
 dev.off()
 
-# # src, all, count, mono
-# png("./rule_violations_src_all_count_mono.png", width = 800, height = 300)
-# makeBarplot(data.frame(quarter = srcp[ , 1], rule = apply(srcp[ , -c(1, ncol(srcp))], 1, sum)),
-#             singlecol, legend = FALSE, ymax = 30000)
-# dev.off()
-# 
-# 
-# # src, all, count, stack
-# png("./rule_violations_src_all_count_stack.png", width = 800, height = 300)
-# makeBarplot(srcp[ , c(1, ruleorder)], plotcols, legend = FALSE, ymax = 30000)
-# dev.off()
-
 # Slide 3
 # src, all, per1k, stack
-png(paste0(params$directory, "/plots/rule_violations_src_all_per1k_stack.png"), width = 800, height = 300)
+png(file.path(top_dir, "plots/rule_violations_src_all_per1k_stack.png"), width = 800, height = 300)
 makeBarplot(cbind(quarter = srcp[ , 1], srcp[ , ruleorder] / srcp$count * 1000),
             plotcols, legend = TRUE, ymax = 25)
 dev.off()
 
-
-# # laf, no15, no01, count, mono
-# png("./rule_violations_laf_no15_no01_count_mono.png", width = 800, height = 300)
-# makeBarplot(data.frame(quarter = lafp[ , 1], rule = apply(lafp[ , -c(1, which(colnames(lafp)=='Rule 0015'), which(colnames(lafp)=='Rule 0001'), ncol(lafp))], 1, sum, na.rm = T)),
-#             singlecol, legend = FALSE, ymax = 5000)
-# dev.off()
-# 
-# 
-# # laf, no15, no01, count, stack
-# png("./rule_violations_laf_no15_no01_count_stack.png", width = 800, height = 300)
-# makeBarplot(lafp[ , c(1, ruleorder[-c(1,2)])],
-#             plotcols[-c(1,2)], legend = TRUE, ymax = 5000)
-# dev.off()
-
 # Slide 5
 # laf, no15, no01, per1k, stack
-png(paste0(params$directory, "/plots/rule_violations_laf_no15_no01_per1k_stack.png"), width = 800, height = 300)
+png(file.path(top_dir, "plots/rule_violations_laf_no15_no01_per1k_stack.png"), width = 800, height = 300)
 makeBarplot(cbind(quarter = lafp[ , 1], lafp[ruleorder[-c(1,2)]] / lafp$count * 1000),
             plotcols[-c(1,2)], legend = TRUE, ymax = 1.2)
 dev.off()
 
-# # src, no15, no01, count, mono
-# png("./rule_violations_src_no15_no01_count_mono.png", width = 800, height = 300)
-# makeBarplot(data.frame(quarter = srcp[ , 1], rule = apply(srcp[ , -c(1, which(colnames(lafp)=='Rule 0015'), which(colnames(lafp)=='Rule 0001'), ncol(lafp))], 1, sum)),
-#             singlecol, legend = FALSE, ymax = 10000)
-# dev.off()
-# 
-# # src, no15, count, stack
-# png("./rule_violations_src_no15_no01_count_stack.png", width = 800, height = 300)
-# makeBarplot(srcp[ , c(1, ruleorder[-c(1,2)])],
-#             plotcols[-c(1,2)], legend = TRUE, ymax = 10000)
-# dev.off()
-
 # Slide 6
 # src, no15, per1k, stack
-png(paste0(params$directory, "/plots/rule_violations_src_no15_no01_per1k_stack.png"), width = 800, height = 300)
+png(file.path(top_dir, "plots/rule_violations_src_no15_no01_per1k_stack.png"), width = 800, height = 300)
 makeBarplot(cbind(quarter = srcp[ , 1], srcp[ruleorder[-c(1,2)]] / srcp$count * 1000),
             plotcols[-c(1,2)], legend = TRUE, ymax = 4.5)
 dev.off()
 
-
-# # all, no15, count, mono
-# png("./rule_violations_all_no15_no01_count_mono.png", width = 800, height = 300)
-# makeBarplot(data.frame(quarter = allp[ , 1], rule = apply(allp[ , -c(1, which(colnames(lafp)=='Rule 0015'), which(colnames(lafp)=='Rule 0001'), ncol(lafp))], 1, sum, na.rm = T)),
-#             singlecol, legend = FALSE, ymax = 20000)
-# dev.off()
-# 
-# 
-# # all, no15, count, stack
-# png("./rule_violations_all_no15_no01_count_stack.png", width = 800, height = 300)
-# makeBarplot(allp[ , c(1, ruleorder[-c(1,2)])],
-#             plotcols[-c(1,2)], legend = TRUE, ymax = 20000)
-# dev.off()
-
-
 ### PRINT TABLE DATA
 
-# 
+print("**Generating tables")
+
 table_all <- cbind(cbind(paste(str_split_fixed(all$quarter, '(?=Q)', 2)[,2],
                                str_split_fixed(all$quarter, '(?=Q)', 2)[,1])), cikall$filings[which(str_detect(cikall$quarter, gsub('Q', '.', period)))],
                    all$count, apply(all[ , 2:(ncol(all)-1)], 1, sum, na.rm = T),
                    all[['Rule 0015']], all[['Rule 0001']],
                    apply(all[ , -c(1, which(colnames(all) %in% c('Rule 0015', 'Rule 0001')), ncol(all))], 1, sum, na.rm = T))[rev(rownames(all)),]
-write.table(table_all, file = paste0(params$directory, "/plots/rule_violations_table_all"), col.names = F, row.names = F)
+write.table(table_all, file = file.path(top_dir, "plots/rule_violations_table_all"), col.names = F, row.names = F)
 # for google slides tables
-write_csv(as.data.frame(table_all), paste0(params$directory, "/plots/rule_violations_table_all.csv"))
+write_csv(as.data.frame(table_all), file.path(top_dir, "plots/rule_violations_table_all.csv"))
 
 table_laf <- cbind(cbind(paste(str_split_fixed(laf$quarter, '(?=Q)', 2)[,2], str_split_fixed(laf$quarter, '(?=Q)', 2)[,1])),
                    subset(cikstatus[which(str_detect(cikstatus$quarter, gsub('Q', '.', period))),], filer_category == 'Large Accelerated Filer')$filings,
                    laf$count, apply(laf[ , 2:(ncol(laf)-1)], 1, sum, na.rm = T), laf[['Rule 0015']], laf[['Rule 0001']],
                    apply(laf[ , -c(1, which(colnames(laf) %in% c('Rule 0015', 'Rule 0001')), ncol(laf))], 1, sum, na.rm = T))[rev(rownames(laf)), ]
-write.table(table_laf, file = paste0(params$directory, "/plots/rule_violations_table_laf"), col.names = F, row.names = F)
-write_csv(as.data.frame(table_laf), paste0(params$directory, "/plots/rule_violations_table_laf.csv"))
+write.table(table_laf, file = file.path(top_dir, "plots/rule_violations_table_laf"), col.names = F, row.names = F)
+write_csv(as.data.frame(table_laf), file.path(top_dir, "plots/rule_violations_table_laf.csv"))
 
 
 table_src <- cbind(cbind(paste(str_split_fixed(src$quarter, '(?=Q)', 2)[,2], str_split_fixed(src$quarter, '(?=Q)', 2)[,1])),
                    subset(cikstatus[which(str_detect(cikstatus$quarter, gsub('Q', '.', period))),], filer_category == 'Smaller Reporting Company')$filings,
                    src$count, apply(src[ , 2:(ncol(src)-1)], 1, sum, na.rm = T), src[['Rule 0015']], src[['Rule 0001']],
                    apply(src[ , -c(1, which(colnames(src) %in% c('Rule 0015', 'Rule 0001')), ncol(src))], 1, sum, na.rm = T))[rev(rownames(src)), ]
-write.table(table_src, file = paste0(params$directory, "/plots/rule_violations_table_src"), col.names = F, row.names = F)
-write_csv(as.data.frame(table_src), paste0(params$directory, "/plots/rule_violations_table_src.csv"))
+write.table(table_src, file =file.path(top_dir, "plots/rule_violations_table_src"), col.names = F, row.names = F)
+write_csv(as.data.frame(table_src), file.path(top_dir, "plots/rule_violations_table_src.csv"))
 
-write.table(count_data_side, file = paste0(params$directory, "/plots/unique_dp_counts"), col.names = c("Year", "Unique Extension Elements", "Extension Fact Count", "Unique GAAP Elements", "GAAP Fact Count"))
-write_csv(as.data.frame(count_data_side), paste0(params$directory, "/plots/unique_dp_counts.csv"))
-
-
-# all
-# 
-# laf
-# 
-# src
-# 
-# cikall
-# 
-# cikstatus
-
-### modelines
-# vim: fdm=expr fde=getline(v\:lnum)=~'^###.*'?'>1'\:'1':
+write.table(count_data_side, file = file.path(top_dir, "plots/unique_dp_counts"), col.names = c("Year", "Unique Extension Elements", "Extension Fact Count", "Unique GAAP Elements", "GAAP Fact Count"))
+write_csv(as.data.frame(count_data_side), file.path(top_dir, "plots/unique_dp_counts.csv"))
 ```
-
-
-
- <!-- rmarkdown::render("./slides_HTML.Rmd", output_format = "ioslides_presentation", output_file = "test_slides", -->
- <!--                   params = list(directory = "/Users/bradwest/Google_Drive/Projects/DQ_requests/DQC_slides", -->
- <!--                                 username = "web_query", -->
- <!--                                 password = "W0rkiv@", -->
- <!--                                 dbserver = "rltest.markv.com", -->
- <!--                                 dbport = "8804", -->
- <!--                                 dbname = "debug3_db", -->
- <!--                                 data_source = "database", -->
- <!--                                 file_input = "DQC_2014_onwards.csv", -->
- <!--                                 start_year = 2015, -->
- <!--                                 end_year = "`lubridate::year(Sys.time())`")) -->
-
-
-<!-- Make sure that your proper directory is set here so that the plots are sourced correctly -->
 
 ## Rules Effective January 1, 2017
 

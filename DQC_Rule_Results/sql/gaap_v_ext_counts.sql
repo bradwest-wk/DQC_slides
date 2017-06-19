@@ -3,7 +3,7 @@
 --Creating a subset of 2016 filings.
 CREATE TEMPORARY TABLE _tmp_period_of_interest AS
 SELECT * FROM _mv_research_base_2014_ongoing
-WHERE (filing_date >= '2014-01-01' AND filing_date < '2017-04-01') AND form_type <> '485BPOS' AND  form_type <>  '485APOS' AND form_type <> '497';
+WHERE (filing_date >= '2014-01-01' AND filing_date < '2017-06-15') AND form_type <> '485BPOS' AND  form_type <>  '485APOS' AND form_type <> '497';
 
 --Creating a table of datapoints and their sources.
 CREATE TEMPORARY TABLE _tmp_datapoint AS

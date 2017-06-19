@@ -16,7 +16,6 @@ try:
 except ImportError:
     flags = None
 
-
 # gen_uuid = lambda : str(uuid.uuid4()) # get random UUID string, not used now
 
 # If modifying these scopes, delete your previously saved credentials
@@ -27,7 +26,9 @@ APPLICATION_NAME = 'Build Slides API'
 
 # The "flow" is specific to the OAuth2 client and detailed on the Google
 # APIs website
-flow = flow_from_clientsecrets('./client_secret.json', scope = SCOPES,
+src_dir = os.path.dirname(os.path.abspath(__file__))
+flow = flow_from_clientsecrets(os.path.join(src_dir, 'client_secret.json'),
+                               scope = SCOPES,
                                redirect_uri= 'urn:ietf:wg:oauth:2.0:oob')
 auth_uri = flow.step1_get_authorize_url()
 webbrowser.open_new(auth_uri)
@@ -62,7 +63,7 @@ def copy_presentation(service, origin_file_id, copy_title):
   try:
     return service.files().copy(
         fileId=origin_file_id, body=body).execute()
-  except errors.HttpError, error:
+  except errors.HttpError as error:
     print('An error occurred: %s' % error)
   return None
 

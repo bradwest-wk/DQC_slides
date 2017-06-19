@@ -115,7 +115,8 @@ BEGIN
             rb.entry_url,
             dc.count AS fact_count,
             rb.filer_status,
-            dp.message_code,
+            dp.message_code AS exact_rule,
+            substring(dp.message_code, 1, 11) AS general_rule,
             dp.name AS element_name,
             CASE
               WHEN dp.base_type='String' THEN 'String'
@@ -170,7 +171,8 @@ BEGIN
             dc.count AS fact_count,
             rb.filer_status,
             --rb.period_end,
-            dp.message_code,
+            dp.message_code AS exact_rule,
+            substring(dp.message_code, 1, 11) AS general_rule,
             dp.name AS element_name,
             CASE
               WHEN dp.base_type='String' THEN 'String'
@@ -235,7 +237,8 @@ BEGIN
             dc.count AS fact_count,
             rb.filer_status,
             --rb.period_end,
-            m.message_code AS message_code,
+            m.message_code AS exact_rule,
+            substring(m.message_code, 1, 11) AS general_rule,
             regexp_replace(m.message_value, E'\\s.*', '') AS element_name, -- Drops everything after the space
             NULL AS fact_value,
             NULL AS start_date,
@@ -274,7 +277,8 @@ BEGIN
             dc.count AS fact_count,
             rb.filer_status,
             --rb.period_end,
-            m.message_code AS message_code,
+            m.message_code AS exact_rule,
+            substring(m.message_code, 1, 11) AS general_rule,
             NULL AS element_name,
             NULL AS fact_value,
             NULL AS start_date,
@@ -313,7 +317,8 @@ BEGIN
             dc.count AS fact_count,
             rb.filer_status,
             --rb.period_end,
-            NULL AS message_code,
+            NULL AS exact_rule,
+            NULL AS general_rule,
             NULL AS element_name,
             NULL AS fact_value,
             NULL AS start_date,
