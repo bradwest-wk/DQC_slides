@@ -4,6 +4,7 @@ import os
 import webbrowser
 import time
 import csv
+import json
 
 from apiclient import discovery
 from oauth2client.client import flow_from_clientsecrets
@@ -143,7 +144,8 @@ for i in range(len(table_paths)):
 # tableSlide = presentation['slides'][8]
 # try:
 #     # parsed = json.loads(titleSlide)
-#     print(json.dumps(tableSlide, indent=4, sort_keys=True))
+#     with open(os.path.join(src_dir, "title_slide_ex.json"), 'w') as outfile:
+#         json.dump(tableSlide, outfile, indent=4, sort_keys=True)
 # except:
 #     print("couldn't print that junk")
 
@@ -316,6 +318,53 @@ reqs = [
     }},
     {'deleteObject': {'objectId': obj_rect[5]['objectId']}},
 ]
+
+# delete excess rows
+errors_row = len(tbl_data[0])
+count_row = len(tbl_data[3])
+
+if errors_row < 8:
+    for i in range(8, errors_row, -1):
+        reqs.append(
+            {
+                "deleteTableRow": {
+                    "tableObjectId": obj_tbl[0]['objectId'],
+                    "cellLocation": {
+                        "rowIndex": i
+                    }
+                }
+            })
+        reqs.append(
+            {
+                "deleteTableRow": {
+                    "tableObjectId": obj_tbl[1]['objectId'],
+                    "cellLocation": {
+                        "rowIndex": i
+                    }
+                }
+            })
+        reqs.append(
+            {
+                "deleteTableRow": {
+                    "tableObjectId": obj_tbl[2]['objectId'],
+                    "cellLocation": {
+                        "rowIndex": i
+                    }
+                }
+            })
+
+if count_row < 4:
+    for i in range(4, count_row, -1):
+        reqs.append(
+            {
+                "deleteTableRow": {
+                    "tableObjectId": obj_tbl[3]['objectId'],
+                    "cellLocation": {
+                        "rowIndex": i
+                    }
+                }
+            })
+
 # use a list comprehension for updating the text in each table object, for the
 # four tables in the slide deck
 reqs.extend([
