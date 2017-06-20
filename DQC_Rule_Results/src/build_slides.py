@@ -38,7 +38,7 @@ auth_code = ""
 
 # Asks user to give the authentication code which opens in browser
 while len(auth_code) == 0:
-    auth_code = raw_input("Enter authorization code: ")
+    auth_code = input("Enter authorization code: ")
 
 credentials = flow.step2_exchange(auth_code)
 
@@ -128,7 +128,7 @@ print("** Reading in table data")
 
 tbl_data = []
 for i in range(len(table_paths)):
-    dr = csv.reader(open(table_paths[i], 'rb'))
+    dr = csv.reader(open(table_paths[i], 'rt'))
     years = []
     for line in dr:
         years.append(line)

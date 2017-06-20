@@ -27,6 +27,11 @@ knitr::opts_chunk$set(echo = FALSE)
 ```
 
 ```{r eval = FALSE}
+# need to set working directory if running script not from shiny app
+setwd("~/Google_Drive/Projects/DQC_slides/DQC_Rule_Results")
+```
+
+```{r eval = FALSE}
   params = list(
     # directory = "/Users/bradwest/Google_Drive/Projects/DQC_slides",
     username = "web_query",
@@ -672,10 +677,13 @@ if (params$data_source_counts=="file"){
   con <- dbConnect(PostgreSQL(), host=db_server, port=db_port,
                  user=db_user, password=db_password, dbname=db_name)
   query <- paste("
-  --Creating a subset of 2016 filings.
-  CREATE TEMPORARY TABLE _tmp_period_of_interest AS 
-  SELECT * FROM _mv_research_base_2014_ongoing 
-  WHERE (filing_date >= ", paste0("\'", params$start_date, "\'"), "AND filing_date < ", paste0("\'", params$end_date, "\'"),") AND form_type <> '485BPOS' AND  form_type <>  '485APOS' AND form_type <> '497';
+  CREATE TEMPORARY TABLE _tmp_period_of_interest AS (
+  SELECT r.report_id, e.reference_number AS cik, f.filing_date
+  FROM filing f
+  JOIN entity e ON f.entity_id = e.entity_id
+  JOIN report r ON f.filing_id = r.filing_id
+  WHERE (f.filing_date >= ", paste0("\'", params$start_date, "\'"), "AND f.filing_date   < ", paste0("\'", params$end_date, "\'"),") AND f.form_type <> '485BPOS' AND f.form_type <>  '485APOS' AND f.form_type <> '497'
+  );
 
   --Creating a table of datapoints and their sources.
   CREATE TEMPORARY TABLE _tmp_datapoint AS 
